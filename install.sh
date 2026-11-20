@@ -25,9 +25,10 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 CHECKOUT=$HERE/.core
 
-NAME=pushover-notifications
-MODULE=github.com/ccmpbll/pushover-notifications
-VERSION=0.1.0
+# Read from the files that own them, so a rename or a version bump is made once.
+NAME=$(sh "$HERE/scripts/manifest-field.sh" name)
+VERSION=$(sh "$HERE/scripts/manifest-field.sh" version)
+MODULE=$(sh "$HERE/scripts/manifest-field.sh" module)
 
 # Everything this writes goes under the checkout's bin/, which is ignored, and
 # that is where a build artefact belongs. The demo keeps its records in demo/
@@ -49,12 +50,10 @@ CONFIG=$WORK/config.yaml
 RELEASE=$HERE/dist
 LOG=$WORK/install.log
 
-for tool in go; do
-	if ! command -v "$tool" > /dev/null 2>&1; then
-		echo "FAIL  $tool is not on PATH, and this needs it."
-		exit 1
-	fi
-done
+if ! command -v go > /dev/null 2>&1; then
+	echo "FAIL  go is not on PATH, and this needs it."
+	exit 1
+fi
 
 mkdir -p "$WORK" "$DATA"
 : > "$LOG"

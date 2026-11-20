@@ -21,6 +21,10 @@ jobs:
           go-version-file: go.mod
       - name: Prusa Connect source (the SDK)
         run: sh scripts/setup.sh
+      - name: Shell scripts
+        run: |
+          for f in install.sh scripts/*.sh; do sh -n "$f"; done
+          shellcheck install.sh scripts/*.sh
       - name: gofmt
         run: test -z "$(gofmt -l *.go)"
       - run: go vet ./...
@@ -46,3 +50,7 @@ jobs:
         run: sh scripts/setup.sh
       - name: Lint, type check and build
         run: LOCKED=1 sh scripts/ui-steps.sh
+      - name: The kit builds
+        run: |
+          sh scripts/make-kit.sh
+          sh kit/install.sh -n ci-check

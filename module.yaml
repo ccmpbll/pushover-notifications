@@ -1,0 +1,295 @@
+# The manifest for pushover-notifications, a module that is the Go process in
+# main.go and nothing else. It follows the print events of the printers the host
+# lets it observe and tells a person about them with Pushover.
+#
+# The namespace is absent on purpose. The host derives it from the repository
+# address the operator installed. For this module that is
+# com.github.aux.ccmpbll.pushover-notifications.
+
+name: pushover-notifications
+kind: sink
+version: 0.1.0
+license: MIT
+title: Pushover Notifications
+summary: Sends a Pushover notification when a print starts, finishes or fails, or a printer needs you.
+codeowner: ccmpbll
+contract_major: 1
+openapi: openapi.json
+platforms:
+  - linux_amd64
+  - linux_arm64
+  - darwin_arm64
+  - windows_amd64
+
+# The Tasmota Plugs extension is optional. When it is installed, the power a
+# print used and what it cost can go in a message.
+suggest:
+  com.github.aux.ccmpbll.tasmota-plugs: "Adds the power a print used, and its cost, to a message"
+calls:
+  - com.github.aux.ccmpbll.tasmota-plugs
+
+# Every setting this module reads. Left empty, the module runs and sends
+# nothing. A key not named here is refused before the process starts.
+options:
+  - key: pushover_token
+    type: secret
+    default: ""
+    summary: "Your Pushover application token, from pushover.net/apps. Set it together with pushover_user."
+  - key: pushover_user
+    type: secret
+    default: ""
+    summary: "Your Pushover user key (or a group key), from the top of your pushover.net dashboard. Set it together with pushover_token."
+  - key: muted_printers
+    type: string
+    default: ""
+    summary: "Serials of printers nobody is told about, separated by commas, such as a test rig. Empty mutes none."
+  - key: connect_url
+    type: url
+    default: ""
+    summary: "The address of this Prusa Connect server, such as http://127.0.0.1:8080. Needed only for a thumbnail or a camera picture. Set it together with connect_token."
+  - key: connect_token
+    type: secret
+    default: ""
+    summary: "An API token from Prusa Connect (Settings, API credentials). Scope read is enough for camera pictures; a thumbnail needs scope operate, because Connect asks the printer for it. Needed only for a picture."
+  - key: timezone
+    type: string
+    default: ""
+    summary: "The time zone {started} and {ended} are written in, such as Europe/Berlin or America/New_York. Empty is the zone this server runs in, often UTC."
+  - key: notify_started
+    type: bool
+    default: "true"
+    summary: "Send a message when a print starts."
+  - key: priority_started
+    type: int
+    default: "-1"
+    summary: "Pushover priority of the started message, from -2 (silent) to 1 (high, ignores quiet hours). 2 is not offered: it needs a retry this module does not make."
+  - key: sound_started
+    type: string
+    default: ""
+    summary: "Pushover sound for the started message, such as magic or siren, in lowercase. Empty is the sound you chose in the Pushover app."
+  - key: title_started
+    type: string
+    default: "{printer}: print started"
+    summary: "The title of the started message. Tags in braces are filled in; see the page for the list."
+  - key: body_started
+    type: string
+    default: "{file}"
+    summary: "The text of the started message, one tag-filled line per line. A line with a tag that has no value is left out."
+  - key: image_started
+    type: string
+    default: "none"
+    summary: "A picture on the started message: none, thumbnail (inside the print file) or camera. Needs connect_url and connect_token."
+  - key: notify_finished
+    type: bool
+    default: "true"
+    summary: "Send a message when a print finishes."
+  - key: priority_finished
+    type: int
+    default: "0"
+    summary: "Pushover priority of the finished message, from -2 (silent) to 1 (high, ignores quiet hours). 2 is not offered: it needs a retry this module does not make."
+  - key: sound_finished
+    type: string
+    default: ""
+    summary: "Pushover sound for the finished message, such as magic or siren, in lowercase. Empty is the sound you chose in the Pushover app."
+  - key: title_finished
+    type: string
+    default: "{printer}: print finished"
+    summary: "The title of the finished message. Tags in braces are filled in; see the page for the list."
+  - key: body_finished
+    type: string
+    default: "{file}\nPrinted for {time_printed}\n{filament} of filament\nUsed {energy}"
+    summary: "The text of the finished message, one tag-filled line per line. A line with a tag that has no value is left out."
+  - key: image_finished
+    type: string
+    default: "none"
+    summary: "A picture on the finished message: none, thumbnail (inside the print file) or camera. Needs connect_url and connect_token."
+  - key: notify_failed
+    type: bool
+    default: "true"
+    summary: "Send a message when a print fails or ends without a result."
+  - key: priority_failed
+    type: int
+    default: "1"
+    summary: "Pushover priority of the failed message, from -2 (silent) to 1 (high, ignores quiet hours). 2 is not offered: it needs a retry this module does not make."
+  - key: sound_failed
+    type: string
+    default: ""
+    summary: "Pushover sound for the failed message, such as magic or siren, in lowercase. Empty is the sound you chose in the Pushover app."
+  - key: title_failed
+    type: string
+    default: "{printer}: print {outcome}"
+    summary: "The title of the failed message. Tags in braces are filled in; see the page for the list."
+  - key: body_failed
+    type: string
+    default: "{file}\nStopped at {progress}"
+    summary: "The text of the failed message, one tag-filled line per line. A line with a tag that has no value is left out."
+  - key: image_failed
+    type: string
+    default: "none"
+    summary: "A picture on the failed message: none, thumbnail (inside the print file) or camera. Needs connect_url and connect_token."
+  - key: notify_cancelled
+    type: bool
+    default: "false"
+    summary: "Send a message when a print is cancelled."
+  - key: priority_cancelled
+    type: int
+    default: "0"
+    summary: "Pushover priority of the cancelled message, from -2 (silent) to 1 (high, ignores quiet hours). 2 is not offered: it needs a retry this module does not make."
+  - key: sound_cancelled
+    type: string
+    default: ""
+    summary: "Pushover sound for the cancelled message, such as magic or siren, in lowercase. Empty is the sound you chose in the Pushover app."
+  - key: title_cancelled
+    type: string
+    default: "{printer}: print {outcome}"
+    summary: "The title of the cancelled message. Tags in braces are filled in; see the page for the list."
+  - key: body_cancelled
+    type: string
+    default: "{file}\nStopped at {progress}"
+    summary: "The text of the cancelled message, one tag-filled line per line. A line with a tag that has no value is left out."
+  - key: image_cancelled
+    type: string
+    default: "none"
+    summary: "A picture on the cancelled message: none, thumbnail (inside the print file) or camera. Needs connect_url and connect_token."
+  - key: notify_attention
+    type: bool
+    default: "true"
+    summary: "Send a message when a printer shows a dialog and waits for you."
+  - key: priority_attention
+    type: int
+    default: "1"
+    summary: "Pushover priority of the attention message, from -2 (silent) to 1 (high, ignores quiet hours). 2 is not offered: it needs a retry this module does not make."
+  - key: sound_attention
+    type: string
+    default: ""
+    summary: "Pushover sound for the attention message, such as magic or siren, in lowercase. Empty is the sound you chose in the Pushover app."
+  - key: title_attention
+    type: string
+    default: "{printer} needs you: {dialog_title}"
+    summary: "The title of the attention message. Tags in braces are filled in; see the page for the list."
+  - key: body_attention
+    type: string
+    default: "{dialog_text}\n{file}"
+    summary: "The text of the attention message, one tag-filled line per line. A line with a tag that has no value is left out."
+  - key: image_attention
+    type: string
+    default: "none"
+    summary: "A picture on the attention message: none, thumbnail (inside the print file) or camera. Needs connect_url and connect_token."
+  - key: notify_lost
+    type: bool
+    default: "true"
+    summary: "Send a message when a printer goes offline during a print."
+  - key: priority_lost
+    type: int
+    default: "1"
+    summary: "Pushover priority of the lost message, from -2 (silent) to 1 (high, ignores quiet hours). 2 is not offered: it needs a retry this module does not make."
+  - key: sound_lost
+    type: string
+    default: ""
+    summary: "Pushover sound for the lost message, such as magic or siren, in lowercase. Empty is the sound you chose in the Pushover app."
+  - key: title_lost
+    type: string
+    default: "{printer} went offline during a print"
+    summary: "The title of the lost message. Tags in braces are filled in; see the page for the list."
+  - key: body_lost
+    type: string
+    default: "{file}\nLast seen at {progress}"
+    summary: "The text of the lost message, one tag-filled line per line. A line with a tag that has no value is left out."
+  - key: image_lost
+    type: string
+    default: "none"
+    summary: "A picture on the lost message: none, thumbnail (inside the print file) or camera. Needs connect_url and connect_token. Must be none: the printer is gone."
+  - key: camera1_printer
+    type: string
+    default: ""
+    summary: "Camera 1: the serial of the printer it watches. Set it together with camera1_name."
+  - key: camera1_name
+    type: string
+    default: ""
+    summary: "Camera 1: the name of the camera in Prusa Connect, for the printer's pictures."
+  - key: camera2_printer
+    type: string
+    default: ""
+    summary: "Camera 2: the serial of the printer it watches. Set it together with camera2_name."
+  - key: camera2_name
+    type: string
+    default: ""
+    summary: "Camera 2: the name of the camera in Prusa Connect, for the printer's pictures."
+  - key: camera3_printer
+    type: string
+    default: ""
+    summary: "Camera 3: the serial of the printer it watches. Set it together with camera3_name."
+  - key: camera3_name
+    type: string
+    default: ""
+    summary: "Camera 3: the name of the camera in Prusa Connect, for the printer's pictures."
+  - key: camera4_printer
+    type: string
+    default: ""
+    summary: "Camera 4: the serial of the printer it watches. Set it together with camera4_name."
+  - key: camera4_name
+    type: string
+    default: ""
+    summary: "Camera 4: the name of the camera in Prusa Connect, for the printer's pictures."
+  - key: camera5_printer
+    type: string
+    default: ""
+    summary: "Camera 5: the serial of the printer it watches. Set it together with camera5_name."
+  - key: camera5_name
+    type: string
+    default: ""
+    summary: "Camera 5: the name of the camera in Prusa Connect, for the printer's pictures."
+  - key: camera6_printer
+    type: string
+    default: ""
+    summary: "Camera 6: the serial of the printer it watches. Set it together with camera6_name."
+  - key: camera6_name
+    type: string
+    default: ""
+    summary: "Camera 6: the name of the camera in Prusa Connect, for the printer's pictures."
+  - key: camera7_printer
+    type: string
+    default: ""
+    summary: "Camera 7: the serial of the printer it watches. Set it together with camera7_name."
+  - key: camera7_name
+    type: string
+    default: ""
+    summary: "Camera 7: the name of the camera in Prusa Connect, for the printer's pictures."
+  - key: camera8_printer
+    type: string
+    default: ""
+    summary: "Camera 8: the serial of the printer it watches. Set it together with camera8_name."
+  - key: camera8_name
+    type: string
+    default: ""
+    summary: "Camera 8: the name of the camera in Prusa Connect, for the printer's pictures."
+
+# Every connection this module makes outside Prusa Connect.
+egress:
+  - host: api.pushover.net
+    ports: [443]
+    from: process
+    why: Sends the notifications to Pushover.
+    sends: The application token and user key, and per message a title, the printer name, the file name, the outcome, the times, and optionally a picture. Nothing else.
+  - option: connect_url
+    ports: [80, 443, 8080, 8443]
+    from: process
+    why: Asks this Prusa Connect server for the thumbnail of a print file or a camera picture, to attach to a message.
+    sends: Only the API token, in a request for one picture.
+
+# Read the print events of every printer, so the module knows when a job
+# starts and settles and when a printer needs you.
+permissions:
+  - observe
+
+# The browser half: a Pushover Notifications settings page in the app's sidebar,
+# built by `sh scripts/ui-build.sh` into ui/dist.
+ui:
+  # The built bundle's entry, relative to the bundle root.
+  entry: ui/index.js
+  # The range of @prusa/connect-ui this bundle was built against.
+  library: ">=0.1.0 <1.0.0"
+  contributes:
+    pages:
+      - path: pushover-notifications
+        title: Pushover Notifications

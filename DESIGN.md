@@ -25,19 +25,32 @@ From the Connect docs in `.core/docs` (see `writing-a-module.md`, `event-types.m
 - **Permission.** `observe` to read printer state and events.
 - **Release.** Same marketplace flow as tasmota-plugs. The id must not contain "prusa". It will be `com.github.aux.ccmpbll.pushover-notifications`.
 
-## Open questions, check before building
+## Still open
 
-1. **Images.** Whether a module can read a camera snapshot or a plate thumbnail, and under which permission. The docs describe a module pushing frames *to* a camera (`operate`), not reading them. If it cannot, messages go out without an image at first.
-2. **Settings page.** The tasmota-plugs setup page saves by restarting the extension. Check whether options can change without a restart before copying that, since a notification module should not drop events while it restarts. The resume cursor covers a short gap.
-3. **Per-printer rules.** One global setup, or per printer (a printer that is only a test rig should not page anyone)? Start global with an exclude list.
-4. **Plug alerts.** Tasmota Plugs could publish an event when it cuts power (see its ROADMAP). Whether another module may subscribe to another module's own-prefix events is unverified.
-5. **Message templates.** Which fields a template may use (printer name, file, outcome, time printed, filament, percent). Keep PrintSpy's defaults.
+1. **Per-printer rules.** One global setup with a mute list for now. Per-printer text or priority is not built.
+2. **Plug alerts.** Tasmota Plugs could publish an event when it cuts power. Whether another module may subscribe to another module's own-prefix events is unverified.
+3. **Progress checkpoints** (for example at 50%) mean following telemetry, which is conflated and at-most-once. Not decided.
 
-## First version
+## Decisions and findings (2026-11-19)
 
-1. Subscribe to started and settled for every printer the module may observe.
-2. Send Pushover messages for started, finished and failed, with priority and sound settings.
-3. Secrets and egress as above, a test-message button on a small settings page.
-4. CI and release workflow copied from tasmota-plugs.
+From the Connect docs and SDK in `.core`. Most of it is not tried on a real host yet.
 
-Then, in order: progress checkpoints, printer errors, images, templates, plug alerts.
+**Printer problems.** `device.issues.changed` carries a dialog when a printer stops and waits for a person: how a firmware error, a filament runout or a question reaches us (`Title`, `Text`, `Code`). A machine that loses its connection in the middle of a print never sends a settled event, so "went offline during a print" is built from the started event plus `device.presence.changed` or `device.departed`, once per print. Never alert on offline alone: a printer switched off overnight, or by Tasmota Plugs on purpose, reads as departed.
+
+**Text tags.** A title and a message per type, with tags (`{printer}`, `{file}`, `{outcome}`, `{progress}`, `{time_printed}`, `{filament}`, `{energy}`, `{cost}`, `{started}`, `{ended}`, `{dialog_title}`, `{dialog_text}`). A line is left out when a tag in it has no value. An unknown tag is refused when saving. Tests hold the page's defaults and tag lists to `module.yaml` and `template.go`.
+
+**Power used.** A module may call another module's routes (`calls:` and `suggest:` in the manifest). The follower reads each plug linked to the printer from Tasmota Plugs (`GET /plugs`, `total_kwh`) when a print starts and when it ends, and takes the difference. The page offers `{energy}` and `{cost}` only when that extension is installed. Not yet checked: that a module calling as itself may read those routes.
+
+**Pictures.** A module has no wire call that returns a picture, but Connect's HTTP API does: `GET /api/v1/devices/{id}/files/thumbnail?path=...` (the picture inside a print file, held by the server and prefetched) and `GET /api/v1/cameras/{name}/snapshot`. The module calls them with an API token and the server's address (`connect_url` and `connect_token`, one egress entry), so camera passwords and push cameras need no special handling. The thumbnail is fetched when a print starts, while the printer is there to ask. A camera is chosen per printer on the page, and the page can list cameras because Connect's camera settings carry the printer each watches. Checked on a real host (2026-11-19): the camera route works with a `read` token and a write is refused; the thumbnail route answers 403 to a `read` token, even naming the file's size and modified time, and needs `operate`, so a thumbnail means a token that can also control printers. The page says so. A job's `Path` comes with a leading slash (`/usb/tangle.bgcode`), which is stripped.
+
+**Settings.** The module's settings are its resource config. Saving writes them through the host and the module restarts, as in Tasmota Plugs. A credential reads back as `xxxxx`, and sending that back keeps the stored one. Events during the restart are lost unless the cursor is kept somewhere.
+
+## Review fixes (2026-11-19)
+
+Slow work is queued as a function the outbox runs, not done in the event-stream callback. The outbox runs that work a few pieces at a time and sends the results in queue order, so a send being retried never delays a power reading; the end of a print waits for its start's reading. A device's name and serial are remembered, so a muted printer stays muted when the host cannot answer. A dialog with no id is still reported once. `{started}` and `{ended}` use a time zone setting. The Connect address must use a port the manifest allows (80, 443, 8080, 8443), checked on the page and in the module.
+
+## Built
+
+Everything above except the release workflow, an install script and a run against a real host. Messages go out through a queue apart from the event stream, are retried on a temporary failure, and a replayed event is sent once.
+
+Next: check it on a real host, progress checkpoints, remembering the stream cursor across a restart, per-printer rules.

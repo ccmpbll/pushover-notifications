@@ -1,0 +1,26 @@
+{
+  "specversion": "1.0",
+  "id": "01M7VG5YJY013KV9SKJ2H824JH",
+  "source": "urn:prusa:site:demo/device/b6d8b11c-3c99-4ec7-86b6-e31ce4bdef7c",
+  "type": "com.prusa.connect.device.job.settled",
+  "time": "2026-11-20T03:32:09.950225Z",
+  "subject": "device:b6d8b11c-3c99-4ec7-86b6-e31ce4bdef7c",
+  "sequence": "00000000000000002353",
+  "causationid": "01a1f702-cb7d-72bf-97bb-fa40b822952d",
+  "epoch": "01M7VG2TZBDQ49Q5FP4YQ17YX6",
+  "hops": 0,
+  "evclass": "state",
+  "data": {
+    "job_id": "01a1f702-cb7d-72bf-97bb-fa40b822952d",
+    "device_job_id": "23",
+    "path": "/usb/tangle.bgcode",
+    "display_name": "tangle.bgcode",
+    "started": "2026-11-19T22:31:57.644072-05:00",
+    "ended": "2026-11-19T22:32:09.908255-05:00",
+    "outcome": "failed",
+    "machine_state": "ERROR",
+    "progress": 76,
+    "time_printing_s": 13,
+    "time_printing_known": true
+  }
+}

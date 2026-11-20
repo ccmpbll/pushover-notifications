@@ -1,4 +1,10 @@
 .DS_Store
+.pnpm-store/
 /.core/
+/client/dist/
+/client/node_modules/
 /dist/
 /kit/
+/ui/dist/
+/ui/node_modules/
+/.claude/

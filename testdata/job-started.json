@@ -1,0 +1,21 @@
+{
+  "specversion": "1.0",
+  "id": "01M7VG5TNYY99FBSGX8RDGDM49",
+  "source": "urn:prusa:site:demo/device/9a692bfd-836f-4ebe-a7b0-22cbb6860eb6",
+  "type": "com.prusa.connect.device.job.started",
+  "time": "2026-11-20T03:32:05.950913Z",
+  "subject": "device:9a692bfd-836f-4ebe-a7b0-22cbb6860eb6",
+  "sequence": "00000000000000003914",
+  "causationid": "01a1f702-eabd-74c6-adf6-2609cc6df60b",
+  "epoch": "01M7VG2TZBDQ49Q5FP4YQ17YX6",
+  "hops": 0,
+  "evclass": "state",
+  "data": {
+    "job_id": "01a1f702-eabd-74c6-adf6-2609cc6df60b",
+    "device_job_id": "24",
+    "path": "/usb/tangle.bgcode",
+    "display_name": "tangle.bgcode",
+    "command_id": "01M7VG5T9Q19YMZF83GXDN7SS0",
+    "started": "2026-11-19T22:32:05.762281-05:00"
+  }
+}

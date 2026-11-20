@@ -1,0 +1,37 @@
+{
+  "info": {
+    "title": "pushover-notifications",
+    "version": "0.1.0",
+    "description": "The routes pushover-notifications serves. Every path is relative to the mount the host assigns, and the host serves this document rebased under it at \u003cmount\u003e/openapi.json."
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/modules/com.github.aux.ccmpbll.pushover-notifications/test": {
+      "post": {
+        "operationId": "send-test",
+        "summary": "Send a test message",
+        "description": "Sends one message with the current credentials, so a person can tell they work. The host takes operate_resource on the module's instance before this is called. Refused with 409 NOT_CONFIGURED while pushover_token and pushover_user are empty, and with 502 SEND_FAILED, carrying Pushover's reason, when Pushover does not take it.",
+        "responses": {
+          "200": {
+            "description": "Pushover took the message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sent": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "sent"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

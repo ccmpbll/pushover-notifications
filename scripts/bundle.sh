@@ -12,8 +12,7 @@ set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 PLATFORM=${1:-linux_amd64}
 OUTDIR=${2:-$HERE/dist-bundles}
-NAME=$(sed -n 's/^name: *//p' "$HERE/module.yaml" | head -n 1)
-[ -n "$NAME" ] || { echo "FAIL  no name in module.yaml" >&2; exit 1; }
+NAME=$(sh "$HERE/scripts/manifest-field.sh" name)
 OS=${PLATFORM%_*}
 ARCH=${PLATFORM#*_}
 EXT=
@@ -28,12 +27,11 @@ if [ ! -f "$HERE/ui/dist/ui/index.js" ]; then
 fi
 # The browser half is built by a separate step, so a source edited since is not
 # in it. Refuse that rather than ship the old page.
-if [ "$(cat "$HERE/ui/dist/.src-stamp" 2> /dev/null)" != "$(sh "$HERE/scripts/ui-stamp.sh")" ]; then
+if [ "$(cat "$HERE/.ui-stamp" 2> /dev/null)" != "$(sh "$HERE/scripts/ui-stamp.sh")" ]; then
 	echo "FAIL  the browser half was not built from the sources as they are. Run: sh scripts/ui-build.sh" >&2
 	exit 1
 fi
 cp -R "$HERE/ui/dist/." "$STAGE/"
-rm -f "$STAGE/.src-stamp"
 cp "$HERE/module.yaml" "$STAGE/module.yaml"
 CGO_ENABLED=0 GOOS=$OS GOARCH=$ARCH go -C "$HERE" build -trimpath -o "$STAGE/${NAME}_${PLATFORM}${EXT}" .
 

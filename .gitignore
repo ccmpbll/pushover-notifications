@@ -9,3 +9,6 @@
 /ui/node_modules/
 /.claude/
 /dist-bundles/
+/kit.new/
+/kit.old/
+/.ui-stamp

@@ -26,9 +26,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 CHECKOUT=$HERE/.core
 
 # Read from the files that own them, so a rename or a version bump is made once.
-NAME=$(sed -n 's/^name: *//p' "$HERE/module.yaml" | head -n 1)
-VERSION=$(sed -n 's/^version: *//p' "$HERE/module.yaml" | head -n 1)
-MODULE=$(sed -n 's/^module  *//p' "$HERE/go.mod" | head -n 1)
+NAME=$(sh "$HERE/scripts/manifest-field.sh" name)
+VERSION=$(sh "$HERE/scripts/manifest-field.sh" version)
+MODULE=$(sh "$HERE/scripts/manifest-field.sh" module)
 
 # Everything this writes goes under the checkout's bin/, which is ignored, and
 # that is where a build artefact belongs. The demo keeps its records in demo/

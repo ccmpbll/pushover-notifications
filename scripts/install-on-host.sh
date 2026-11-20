@@ -11,9 +11,10 @@
 #
 # It sets nothing up: open the Pushover Notifications page in the app and enter
 # your token and user key there (credentials are never given on a command line).
-# A reinstall passes no settings, and the ones saved in the app live in the
-# host's own records, which `module add` does not write, so this is also how to
-# upgrade. After the first upgrade, check on the page that the token is still set.
+# A reinstall passes no settings. Settings saved in the app should survive it:
+# from the host's source they live in its own records, which `module add` does
+# not write. That has not been tried with a stored token, so after the first
+# upgrade check on the page that the token and user key are still set.
 #
 #   <container>   the Connect container's name, as `docker ps` shows it
 #   -n            show what would run and stop; nothing is changed
@@ -197,11 +198,11 @@ run docker start "$CONTAINER"
 UNHEALTHY=
 echo "6. waiting for it to be healthy..."
 if [ "$DRY" = 1 ]; then
-	echo "  would wait for the container's health check, up to 90 seconds"
+	echo "  would wait for the container's health check, up to 3 minutes"
 else
 	i=0
 	health=
-	while [ $i -lt 45 ]; do
+	while [ $i -lt 90 ]; do
 		health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER" 2>/dev/null || true)
 		if [ "$health" = healthy ] || [ "$health" = none ]; then
 			break
@@ -210,7 +211,13 @@ else
 		sleep 2
 	done
 	echo "   health: $health"
-	[ "$health" = healthy ] || [ "$health" = none ] || UNHEALTHY=$health
+	# Still starting is not a failure: a big database on slow disks can take
+	# longer than this. Only a container that says it is unhealthy is.
+	case $health in
+	healthy | none) ;;
+	starting) echo "NOTE  $CONTAINER is still starting. Check it in a minute with: docker ps" ;;
+	*) UNHEALTHY=$health ;;
+	esac
 fi
 
 echo "7. what the module logged:"

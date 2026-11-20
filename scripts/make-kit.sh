@@ -21,9 +21,8 @@ KIT=$HERE/kit
 NEW=$HERE/kit.new
 
 # The name and module path are read from the files that own them.
-NAME=$(sed -n 's/^name: *//p' "$HERE/module.yaml" | head -n 1)
-MODULE=$(sed -n 's/^module  *//p' "$HERE/go.mod" | head -n 1)
-[ -n "$NAME" ] && [ -n "$MODULE" ] || { echo "FAIL  could not read the name from module.yaml and the module path from go.mod" >&2; exit 1; }
+NAME=$(sh "$HERE/scripts/manifest-field.sh" name)
+MODULE=$(sh "$HERE/scripts/manifest-field.sh" module)
 
 [ $# -gt 0 ] || set -- linux_amd64
 
@@ -46,8 +45,15 @@ done
 	fi
 )
 
-rm -rf "$KIT"
-mv "$NEW" "$KIT"
+# The old kit is moved aside, not deleted, until the new one is in place.
+rm -rf "$KIT.old"
+[ ! -e "$KIT" ] || mv "$KIT" "$KIT.old"
+mv "$NEW" "$KIT" || {
+	[ ! -e "$KIT.old" ] || mv "$KIT.old" "$KIT"
+	echo "FAIL  could not move the new kit into place" >&2
+	exit 1
+}
+rm -rf "$KIT.old"
 
 echo "kit: $KIT"
 ls -la "$KIT"

@@ -50,3 +50,5 @@ jobs:
         run: sh scripts/setup.sh
       - name: Lint, type check and build
         run: LOCKED=1 sh scripts/ui-steps.sh
+      - name: The kit builds
+        run: sh scripts/make-kit.sh

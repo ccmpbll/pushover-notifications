@@ -194,6 +194,7 @@ echo "5. starting $CONTAINER..."
 run docker start "$CONTAINER"
 [ "$DRY" = 1 ] || STOPPED=0
 
+UNHEALTHY=
 echo "6. waiting for it to be healthy..."
 if [ "$DRY" = 1 ]; then
 	echo "  would wait for the container's health check, up to 90 seconds"
@@ -209,6 +210,7 @@ else
 		sleep 2
 	done
 	echo "   health: $health"
+	[ "$health" = healthy ] || [ "$health" = none ] || UNHEALTHY=$health
 fi
 
 echo "7. what the module logged:"
@@ -218,6 +220,8 @@ else
 	sleep 3
 	docker logs --since 2m "$CONTAINER" 2>&1 | grep -i "$NAME" | tail -n 8 | cut -c1-220 || true
 fi
+
+[ -z "$UNHEALTHY" ] || fail "$CONTAINER is $UNHEALTHY, not healthy. Look at: docker logs --tail 50 $CONTAINER"
 
 echo
 echo "Done. Open Pushover Notifications in the app's sidebar to set your token and user key."

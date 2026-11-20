@@ -28,11 +28,12 @@ if [ ! -f "$HERE/ui/dist/ui/index.js" ]; then
 fi
 # The browser half is built by a separate step, so a source edited since is not
 # in it. Refuse that rather than ship the old page.
-if [ -n "$(find "$HERE/ui/src" "$HERE/ui/package.json" -type f -newer "$HERE/ui/dist/ui/index.js" | head -n 1)" ]; then
-	echo "FAIL  ui/ has files newer than the built browser half. Run: sh scripts/ui-build.sh" >&2
+if [ "$(cat "$HERE/ui/dist/.src-stamp" 2> /dev/null)" != "$(sh "$HERE/scripts/ui-stamp.sh")" ]; then
+	echo "FAIL  the browser half was not built from the sources as they are. Run: sh scripts/ui-build.sh" >&2
 	exit 1
 fi
 cp -R "$HERE/ui/dist/." "$STAGE/"
+rm -f "$STAGE/.src-stamp"
 cp "$HERE/module.yaml" "$STAGE/module.yaml"
 CGO_ENABLED=0 GOOS=$OS GOARCH=$ARCH go -C "$HERE" build -trimpath -o "$STAGE/${NAME}_${PLATFORM}${EXT}" .
 

@@ -67,3 +67,4 @@ if [ "${FORMAT:-0}" = 1 ]; then
 fi
 quietly pnpm run check
 quietly pnpm run build
+sh "$ROOT/scripts/ui-stamp.sh" > "$ROOT/ui/dist/.src-stamp"

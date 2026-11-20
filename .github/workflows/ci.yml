@@ -21,6 +21,10 @@ jobs:
           go-version-file: go.mod
       - name: Prusa Connect source (the SDK)
         run: sh scripts/setup.sh
+      - name: Shell scripts
+        run: |
+          for f in install.sh scripts/*.sh; do sh -n "$f"; done
+          shellcheck install.sh scripts/*.sh
       - name: gofmt
         run: test -z "$(gofmt -l *.go)"
       - run: go vet ./...

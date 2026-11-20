@@ -8,3 +8,4 @@
 /ui/dist/
 /ui/node_modules/
 /.claude/
+/dist-bundles/

@@ -11,7 +11,9 @@
 #
 # It sets nothing up: open the Pushover Notifications page in the app and enter
 # your token and user key there (credentials are never given on a command line).
-# A reinstall keeps the settings saved in the app, so this is also how to upgrade.
+# A reinstall passes no settings, and the ones saved in the app live in the
+# host's own records, which `module add` does not write, so this is also how to
+# upgrade. After the first upgrade, check on the page that the token is still set.
 #
 #   <container>   the Connect container's name, as `docker ps` shows it
 #   -n            show what would run and stop; nothing is changed
@@ -41,7 +43,7 @@ done
 shift $((OPTIND - 1))
 
 if [ $# -ne 1 ]; then
-	sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+	awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
 	exit 2
 fi
 
@@ -66,8 +68,9 @@ x86_64 | amd64) PLATFORM=linux_amd64 ;;
 aarch64 | arm64) PLATFORM=linux_arm64 ;;
 *) fail "no build for this CPU: $(uname -m)" ;;
 esac
-BUNDLE=pushover-notifications-$PLATFORM.tar.gz
-[ -f "$DIR/$BUNDLE" ] || fail "$DIR/$BUNDLE is not here. Copy the whole kit folder, not just install.sh"
+set -- "$DIR"/*-"$PLATFORM".tar.gz
+[ $# -eq 1 ] && [ -f "$1" ] || fail "there is not exactly one *-$PLATFORM.tar.gz in $DIR. Copy the whole kit folder, not just install.sh"
+BUNDLE=$(basename "$1")
 
 # A copy that was cut short or changed would be installed and run as it is.
 if [ -f "$DIR/SHA256SUMS" ]; then
@@ -84,7 +87,10 @@ else
 	echo "NOTE  no SHA256SUMS beside the bundle, so the copy was not checked"
 fi
 
-MODULE=github.com/ccmpbll/pushover-notifications
+# make-kit.sh writes this line from go.mod.
+MODULE=@MODULE@
+case $MODULE in @*) fail "MODULE was not filled in. Use the install.sh that scripts/make-kit.sh wrote" ;; esac
+NAME=$(tar -xzOf "$DIR/$BUNDLE" module.yaml | sed -n 's/^name: *//p' | head -n 1)
 VERSION=$(tar -xzOf "$DIR/$BUNDLE" module.yaml | sed -n 's/^version: *//p' | head -n 1)
 [ -n "$VERSION" ] || fail "could not read the version from $BUNDLE"
 
@@ -174,7 +180,8 @@ run docker stop "$CONTAINER"
 [ "$DRY" = 1 ] || STOPPED=1
 
 echo "3. installing..."
-# No -settings: whatever is saved in the app is kept.
+# No -settings: `module add` rewrites only the declaration, not the records the
+# app saves settings in.
 # shellcheck disable=SC2086 # CONFIG_FLAG is empty or " -config <path>"
 run inside /prusa_connect module add "$MODULE@$VERSION" \
 	-from "/data/$BUNDLE" -approve $CONFIG_FLAG
@@ -206,10 +213,10 @@ fi
 
 echo "7. what the module logged:"
 if [ "$DRY" = 1 ]; then
-	echo "  would run: docker logs --since 2m $CONTAINER | grep pushover-notifications"
+	echo "  would run: docker logs --since 2m $CONTAINER | grep $NAME"
 else
 	sleep 3
-	docker logs --since 2m "$CONTAINER" 2>&1 | grep -i 'pushover-notifications' | tail -n 8 | cut -c1-220 || true
+	docker logs --since 2m "$CONTAINER" 2>&1 | grep -i "$NAME" | tail -n 8 | cut -c1-220 || true
 fi
 
 echo

@@ -352,3 +352,59 @@ func TestWhenEveryCameraIsDownEachIsNamed(t *testing.T) {
 		}
 	}
 }
+
+func TestTheCameraOfAPrinterThatIsOffIsNotTriedWhileAnotherAnswers(t *testing.T) {
+	s := withRule(t, "started", func(r *Rule) { r.Image = imageCamera })
+	s.Cameras = map[string]string{"S1": "cam-one", "S2": "cam-two"}
+
+	kit := kitWith(
+		testPrinter{ID: "d1", Name: "MK4S", Serial: "S1", Away: true},
+		testPrinter{ID: "d2", Name: "Core One", Serial: "S2"},
+	)
+
+	var asked []string
+
+	inner := kit.snapshot
+	kit.snapshot = func(ctx context.Context, st Settings, camera string) ([]byte, string, error) {
+		asked = append(asked, camera)
+
+		return inner(ctx, st, camera)
+	}
+
+	m, report := kit.compose(context.Background(), s, "started", testNow)
+
+	// S1 sorts first, but its printer is off, so the Core One's camera is asked
+	// first and answers, and the off one is not asked and not mentioned.
+	if string(m.Image) != "snap:cam-two" || report.Problem != "" || len(asked) != 1 {
+		t.Fatalf("%+v asked %v", report, asked)
+	}
+}
+
+func TestAnOffPrintersCameraIsTriedLastAndSaysThePrinterIsOff(t *testing.T) {
+	s := withRule(t, "started", func(r *Rule) { r.Image = imageCamera })
+	s.Cameras = map[string]string{"S1": "cam-one"}
+
+	kit := kitWith(testPrinter{ID: "d1", Name: "MK4S", Serial: "S1", Away: true})
+	kit.snapshot = func(context.Context, Settings, string) ([]byte, string, error) {
+		return nil, "", errors.New("502")
+	}
+
+	_, report := kit.compose(context.Background(), s, "started", testNow)
+
+	if !strings.Contains(report.Problem, "MK4S (the printer is off)") {
+		t.Fatalf("%q", report.Problem)
+	}
+}
+
+func TestACameraForAPrinterTheHostDoesNotListIsTriedLastAndDoesNotBreakTheTest(t *testing.T) {
+	s := withRule(t, "started", func(r *Rule) { r.Image = imageCamera })
+	s.Cameras = map[string]string{"GONE": "cam-gone", "S2": "cam-two"}
+
+	m, report := kitWith(testPrinter{ID: "d2", Name: "Core One", Serial: "S2"}).compose(context.Background(), s, "started", testNow)
+
+	// GONE sorts first, but it is not a printer the host has, so the listed
+	// printer's camera comes first and answers.
+	if string(m.Image) != "snap:cam-two" || report.Printer != "Core One" {
+		t.Fatalf("%+v", report)
+	}
+}

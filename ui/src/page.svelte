@@ -106,7 +106,7 @@
 
   void load();
 
-  const found = $derived(form ? problems(form, form.saved, tasmota) : {});
+  const found = $derived(form ? problems(form, form.saved) : {});
   const valid = $derived(Object.keys(found).length === 0);
   const changed = $derived(
     form !== undefined && original !== undefined && dirty(form, original),

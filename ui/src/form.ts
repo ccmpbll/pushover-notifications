@@ -333,7 +333,6 @@ const TAG = /\{[a-z_]+\}/g;
 export const templateProblem = (
   kind: Kind,
   text: string,
-  tasmota: boolean,
   field?: 'title' | 'body',
 ): string | undefined => {
   if (field === 'title' && text.trim() === '')
@@ -348,8 +347,6 @@ export const templateProblem = (
     const name = tag.slice(1, -1);
     if (!allowed.includes(name))
       return `${tag} is not a tag of this message. Use the tags listed below.`;
-    if (NEEDS_TASMOTA.includes(name) && !tasmota)
-      return `${tag} needs the Tasmota Plugs extension.`;
   }
 
   if (/[{}]/.test(text.replace(TAG, '')))
@@ -450,11 +447,7 @@ const addressProblem = (text: string): string | undefined => {
 };
 
 /** Every problem in the form, by field. Empty means it can be saved. */
-export const problems = (
-  form: Form,
-  saved: Saved,
-  tasmota: boolean,
-): Record<string, string> => {
+export const problems = (form: Form, saved: Saved): Record<string, string> => {
   const found: Record<string, string> = {};
 
   if (form.token !== '' && !CREDENTIAL.test(form.token.trim()))
@@ -488,14 +481,9 @@ export const problems = (
     found.cameras = `At most ${String(MAX_CAMERAS)} printers can have a camera.`;
 
   for (const kind of KINDS) {
-    const title = templateProblem(
-      kind,
-      form.rules[kind].title,
-      tasmota,
-      'title',
-    );
+    const title = templateProblem(kind, form.rules[kind].title, 'title');
     if (title) found[`title.${kind}`] = title;
-    const body = templateProblem(kind, form.rules[kind].body, tasmota, 'body');
+    const body = templateProblem(kind, form.rules[kind].body, 'body');
     if (body) found[`body.${kind}`] = body;
   }
 

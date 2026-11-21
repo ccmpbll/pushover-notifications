@@ -507,3 +507,32 @@ const normal = (form: Form): string =>
 /** Whether the form differs from the one it was read as. */
 export const dirty = (form: Form, original: Form): boolean =>
   normal(form) !== normal(original);
+
+/** What a message type's test did, as the module answers it. */
+export interface KindTestAnswer {
+  printer: string;
+  picture: string;
+  picture_problem: string;
+}
+
+export type KindTestOutcome =
+  | { what: 'no_picture'; reason: string }
+  | { what: 'picture'; printer: string; picture: string }
+  | { what: 'plain'; printer: string };
+
+/**
+ * What to tell the person about a test. A picture that was asked for and not
+ * got comes first: the text went out, and the reason is the point.
+ */
+export const kindTestOutcome = (answer: KindTestAnswer): KindTestOutcome => {
+  if (answer.picture_problem !== '')
+    return { what: 'no_picture', reason: answer.picture_problem };
+  if (answer.picture !== 'none')
+    return {
+      what: 'picture',
+      printer: answer.printer,
+      picture: answer.picture,
+    };
+
+  return { what: 'plain', printer: answer.printer };
+};

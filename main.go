@@ -150,13 +150,7 @@ func run() error {
 				return testPrint{}, false
 			}
 
-			for _, job := range []*deviceapi.Job{jobs.Current, jobs.Last} {
-				if job != nil && (job.Path != "" || job.DisplayName != "") {
-					return testPrint{Display: job.DisplayName, Path: job.Path}, true
-				}
-			}
-
-			return testPrint{}, false
+			return lastPrintOf(jobs)
 		},
 		thumbnail: pictures.Thumbnail,
 		snapshot:  pictures.Snapshot,

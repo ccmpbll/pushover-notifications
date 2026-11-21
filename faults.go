@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/prusa3d/prusa-connect/sdk/fault"
 )
@@ -53,7 +54,7 @@ var (
 	// UnknownKind is a test asked for a message type this module does not have.
 	UnknownKind = fault.Register(faultDomain, "UNKNOWN_KIND", http.StatusBadRequest, fault.Document(
 		"This module has no message of that type",
-		"Use one of started, finished, failed, cancelled, attention or lost.",
+		"Use one of "+strings.Join(kinds, ", ")+".",
 		fault.RetryNever,
 		fault.ShowDetail,
 		"kind",

@@ -14,6 +14,7 @@ import {
   preview,
   problems,
   readForm,
+  kindTestOutcome,
   templateProblem,
   toSettings,
   type Form,
@@ -450,5 +451,46 @@ describe('the time zone the page starts with', () => {
     const { form, original } = readForm({}, 'UTC');
     form.rules.started.on = false;
     expect(original.rules.started.on).toBe(DEFAULT_RULES.started.on);
+  });
+});
+
+describe('what a message type test tells the person', () => {
+  it('names the printer when no picture was asked for', () => {
+    expect(
+      kindTestOutcome({
+        printer: 'MK4S',
+        picture: 'none',
+        picture_problem: '',
+      }),
+    ).toEqual({ what: 'plain', printer: 'MK4S' });
+  });
+
+  it('names the picture that went with the message', () => {
+    expect(
+      kindTestOutcome({
+        printer: 'MK4S',
+        picture: 'camera',
+        picture_problem: '',
+      }),
+    ).toEqual({ what: 'picture', printer: 'MK4S', picture: 'camera' });
+  });
+
+  it('gives the reason first when a picture was asked for and not got', () => {
+    expect(
+      kindTestOutcome({
+        printer: 'MK4S',
+        picture: 'none',
+        picture_problem: 'Prusa Connect answered 401',
+      }),
+    ).toEqual({ what: 'no_picture', reason: 'Prusa Connect answered 401' });
+
+    // Even if a picture is somehow named, the problem is what to say.
+    expect(
+      kindTestOutcome({
+        printer: 'MK4S',
+        picture: 'camera',
+        picture_problem: 'late',
+      }).what,
+    ).toBe('no_picture');
   });
 });

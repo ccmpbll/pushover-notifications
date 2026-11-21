@@ -19,6 +19,7 @@
     KINDS,
     browserZone,
     dirty,
+    kindTestOutcome,
     readForm,
     problems,
     toSettings,
@@ -203,24 +204,29 @@
         { body: { kind } },
         host.signal,
       );
-      const printer = result.printer;
-      if (result.picture_problem !== '')
-        return {
-          ok: true,
-          text: t('pushover.kind_test.no_picture', {
-            reason: result.picture_problem,
-          }),
-        };
-      if (result.picture !== 'none')
-        return {
-          ok: true,
-          text: t('pushover.kind_test.ok_picture', {
-            printer,
-            picture: t(`pushover.image.sample.${result.picture}`),
-          }),
-        };
-
-      return { ok: true, text: t('pushover.kind_test.ok', { printer }) };
+      const outcome = kindTestOutcome(result);
+      switch (outcome.what) {
+        case 'no_picture':
+          return {
+            ok: true,
+            text: t('pushover.kind_test.no_picture', {
+              reason: outcome.reason,
+            }),
+          };
+        case 'picture':
+          return {
+            ok: true,
+            text: t('pushover.kind_test.ok_picture', {
+              printer: outcome.printer,
+              picture: t(`pushover.image.sample.${outcome.picture}`),
+            }),
+          };
+        default:
+          return {
+            ok: true,
+            text: t('pushover.kind_test.ok', { printer: outcome.printer }),
+          };
+      }
     } catch (error) {
       return {
         ok: false,

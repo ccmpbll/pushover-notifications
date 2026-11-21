@@ -44,6 +44,7 @@
   "pushover.kind_test.sending": "Sending…",
   "pushover.kind_test.ok": "Sent, written for {printer}. Check your phone.",
   "pushover.kind_test.ok_picture": "Sent, written for {printer}, with {picture}. Check your phone.",
+  "pushover.kind_test.ok_picture_but": "Sent, written for {printer}, with {picture}. But {reason}",
   "pushover.kind_test.no_picture": "Sent without the picture: {reason}",
   "pushover.kind_test.save_first": "Save your token and user key first.",
   "pushover.kind_test.unsaved": "Save your changes first: the test uses the saved settings.",

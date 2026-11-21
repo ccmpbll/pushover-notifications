@@ -533,13 +533,23 @@ export interface KindTestAnswer {
 export type KindTestOutcome =
   | { what: 'no_picture'; reason: string }
   | { what: 'picture'; printer: string; picture: string }
+  | { what: 'picture_but'; printer: string; picture: string; reason: string }
   | { what: 'plain'; printer: string };
 
 /**
  * What to tell the person about a test. A picture that was asked for and not
- * got comes first: the text went out, and the reason is the point.
+ * got comes first: the text went out, and the reason is the point. A picture
+ * that went while another camera failed is both: the person needs to hear about
+ * the camera that is down.
  */
 export const kindTestOutcome = (answer: KindTestAnswer): KindTestOutcome => {
+  if (answer.picture !== 'none' && answer.picture_problem !== '')
+    return {
+      what: 'picture_but',
+      printer: answer.printer,
+      picture: answer.picture,
+      reason: answer.picture_problem,
+    };
   if (answer.picture_problem !== '')
     return { what: 'no_picture', reason: answer.picture_problem };
   if (answer.picture !== 'none')

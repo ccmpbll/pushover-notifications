@@ -213,6 +213,15 @@
               reason: outcome.reason,
             }),
           };
+        case 'picture_but':
+          return {
+            ok: true,
+            text: t('pushover.kind_test.ok_picture_but', {
+              printer: outcome.printer,
+              picture: t(`pushover.image.sample.${outcome.picture}`),
+              reason: outcome.reason,
+            }),
+          };
         case 'picture':
           return {
             ok: true,

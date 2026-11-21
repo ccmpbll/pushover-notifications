@@ -499,13 +499,18 @@ describe('what a message type test tells the person', () => {
       }),
     ).toEqual({ what: 'no_picture', reason: 'Prusa Connect answered 401' });
 
-    // Even if a picture is somehow named, the problem is what to say.
+    // A picture that went while another camera failed says both.
     expect(
       kindTestOutcome({
-        printer: 'MK4S',
+        printer: 'Core One',
         picture: 'camera',
-        picture_problem: 'late',
-      }).what,
-    ).toBe('no_picture');
+        picture_problem: 'the camera x of MK4S: down',
+      }),
+    ).toEqual({
+      what: 'picture_but',
+      printer: 'Core One',
+      picture: 'camera',
+      reason: 'the camera x of MK4S: down',
+    });
   });
 });

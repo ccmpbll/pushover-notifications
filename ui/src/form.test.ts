@@ -203,47 +203,44 @@ describe('writing what the host should hold', () => {
     form.cameras = Object.fromEntries(
       Array.from({ length: 9 }, (_, i) => [`S${String(i)}`, `c${String(i)}`]),
     );
-    expect(problems(form, saved(), true).cameras).toBeDefined();
+    expect(problems(form, saved()).cameras).toBeDefined();
   });
 });
 
 describe('a template', () => {
   it('accepts the tags of its message type', () => {
-    expect(
-      templateProblem('finished', '{file} {energy}', true),
-    ).toBeUndefined();
-    expect(templateProblem('attention', '{dialog_text}', true)).toBeUndefined();
+    expect(templateProblem('finished', '{file} {energy}')).toBeUndefined();
+    expect(templateProblem('attention', '{dialog_text}')).toBeUndefined();
   });
 
   it('refuses a tag of another type, a stray brace and an empty title', () => {
-    expect(templateProblem('started', '{energy}', true)).toContain('{energy}');
-    expect(templateProblem('lost', '{dialog_text}', true)).toContain(
-      '{dialog_text}',
-    );
-    expect(templateProblem('started', '{file} {', true)).toBeDefined();
-    expect(templateProblem('started', '{File}', true)).toBeDefined();
+    expect(templateProblem('started', '{energy}')).toContain('{energy}');
+    expect(templateProblem('lost', '{dialog_text}')).toContain('{dialog_text}');
+    expect(templateProblem('started', '{file} {')).toBeDefined();
+    expect(templateProblem('started', '{File}')).toBeDefined();
   });
 
-  it('refuses the power tags while Tasmota Plugs is not installed', () => {
-    expect(templateProblem('finished', '{energy}', false)).toContain('Tasmota');
-    expect(templateProblem('finished', 'x {cost}', false)).toContain('Tasmota');
-    expect(templateProblem('finished', '{file}', false)).toBeUndefined();
+  // The default finished message has a line with {energy}. Without Tasmota
+  // Plugs the page leaves that line out of a message, so it is no reason to
+  // refuse a save (it once was: a fresh install could not be saved).
+  it('does not refuse a power tag, whether or not Tasmota Plugs is installed', () => {
+    expect(templateProblem('finished', '{energy}')).toBeUndefined();
+    expect(templateProblem('finished', 'x {cost}')).toBeUndefined();
+    expect(
+      templateProblem('finished', DEFAULT_RULES.finished.body, 'body'),
+    ).toBeUndefined();
   });
 
   it('is held to Pushover’s lengths', () => {
     expect(
-      templateProblem('started', 'a'.repeat(250), true, 'title'),
+      templateProblem('started', 'a'.repeat(250), 'title'),
     ).toBeUndefined();
+    expect(templateProblem('started', 'a'.repeat(251), 'title')).toBeDefined();
     expect(
-      templateProblem('started', 'a'.repeat(251), true, 'title'),
-    ).toBeDefined();
-    expect(
-      templateProblem('started', 'a'.repeat(1024), true, 'body'),
+      templateProblem('started', 'a'.repeat(1024), 'body'),
     ).toBeUndefined();
-    expect(
-      templateProblem('started', 'a'.repeat(1025), true, 'body'),
-    ).toBeDefined();
-    expect(templateProblem('started', '  ', true, 'title')).toBeDefined();
+    expect(templateProblem('started', 'a'.repeat(1025), 'body')).toBeDefined();
+    expect(templateProblem('started', '  ', 'title')).toBeDefined();
   });
 });
 
@@ -269,8 +266,7 @@ describe('the preview', () => {
 });
 
 describe('what is wrong with the form', () => {
-  const ok = (form: Form = base(), s: Saved = saved()) =>
-    problems(form, s, true);
+  const ok = (form: Form = base(), s: Saved = saved()) => problems(form, s);
 
   it('is nothing for the defaults', () => {
     expect(ok()).toEqual({});
@@ -401,7 +397,7 @@ describe('the time zone', () => {
 
   it('must be a zone the module can load', () => {
     const ok = (timezone: string) =>
-      problems({ ...base(), timezone }, saved(), true).timezone;
+      problems({ ...base(), timezone }, saved()).timezone;
 
     expect(ok('')).toBeUndefined();
     expect(ok('America/New_York')).toBeUndefined();
@@ -422,7 +418,7 @@ describe('the Prusa Connect address and the ports the manifest allows', () => {
 
   it('refuses a port the module may not connect to, and takes the default of the scheme', () => {
     const ok = (connectUrl: string) =>
-      problems({ ...base(), connectUrl }, saved(), true).connectUrl;
+      problems({ ...base(), connectUrl }, saved()).connectUrl;
 
     expect(ok('http://127.0.0.1:8080')).toBeUndefined();
     expect(ok('https://connect.lan:8443/')).toBeUndefined();

@@ -33,15 +33,17 @@ type connectAPI struct {
 func (c *connectAPI) Thumbnail(ctx context.Context, s Settings, deviceID, filePath string) ([]byte, string, error) {
 	query := url.Values{"path": {strings.TrimPrefix(filePath, "/")}}
 
-	return c.get(ctx, s, "/api/v1/devices/"+url.PathEscape(deviceID)+"/files/thumbnail?"+query.Encode())
+	return c.get(ctx, s, "/api/v1/devices/"+url.PathEscape(deviceID)+"/files/thumbnail?"+query.Encode(), "operate")
 }
 
 // Snapshot is a camera's newest still image.
 func (c *connectAPI) Snapshot(ctx context.Context, s Settings, camera string) ([]byte, string, error) {
-	return c.get(ctx, s, "/api/v1/cameras/"+url.PathEscape(camera)+"/snapshot")
+	return c.get(ctx, s, "/api/v1/cameras/"+url.PathEscape(camera)+"/snapshot", "read")
 }
 
-func (c *connectAPI) get(ctx context.Context, s Settings, route string) ([]byte, string, error) {
+// get fetches one picture. scope is the API token scope this picture needs, for
+// the message when Connect refuses the token.
+func (c *connectAPI) get(ctx context.Context, s Settings, route, scope string) ([]byte, string, error) {
 	if s.ConnectURL == "" || s.ConnectToken == "" {
 		return nil, "", errors.New("connect_url and connect_token are not set")
 	}
@@ -68,7 +70,7 @@ func (c *connectAPI) get(ctx context.Context, s Settings, route string) ([]byte,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("Prusa Connect answered HTTP %d, so there is no picture", resp.StatusCode)
+		return nil, "", refusal(resp.StatusCode, scope)
 	}
 
 	mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
@@ -86,4 +88,20 @@ func (c *connectAPI) get(ctx context.Context, s Settings, route string) ([]byte,
 	}
 
 	return data, mediaType, nil
+}
+
+// refusal says what an answer other than 200 means for the person who has to
+// fix it. Only the status and the scope the picture needs are in it, never the
+// token.
+func refusal(status int, scope string) error {
+	switch status {
+	case http.StatusUnauthorized:
+		return errors.New("Prusa Connect does not accept the API token (HTTP 401). It may have expired or been deleted: make a new one under Settings, API credentials")
+	case http.StatusForbidden:
+		return fmt.Errorf("Prusa Connect refused the API token for this picture (HTTP 403). This picture needs a token with scope %s: check the token under Settings, API credentials", scope)
+	case http.StatusNotFound:
+		return errors.New("Prusa Connect has no such camera or print file (HTTP 404). Check the camera chosen for the printer")
+	default:
+		return fmt.Errorf("Prusa Connect answered HTTP %d, so there is no picture", status)
+	}
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prusa3d/prusa-connect/sdk/manifest"
 	"gopkg.in/yaml.v3"
@@ -20,7 +20,7 @@ func call(t *testing.T, send func(context.Context, Message) error, method, path 
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	routes(send).ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	routes(send, testKit{}).ServeHTTP(rec, httptest.NewRequest(method, path, nil))
 
 	return rec
 }
@@ -180,16 +180,12 @@ func TestTheManifestDeclaresExactlyTheKeysTheReaderAccepts(t *testing.T) {
 		declared[option.Key] = true
 	}
 
-	want := []string{"pushover_token", "pushover_user", "muted_printers", "connect_url", "connect_token", "timezone"}
+	want := []string{"pushover_token", "pushover_user", "muted_printers", "connect_url", "connect_token", "timezone", "cameras"}
 
 	for _, kind := range kinds {
 		for _, field := range []string{"notify", "priority", "sound", "title", "body", "image"} {
 			want = append(want, field+"_"+kind)
 		}
-	}
-
-	for slot := 1; slot <= maxCameras; slot++ {
-		want = append(want, fmt.Sprintf("camera%d_printer", slot), fmt.Sprintf("camera%d_name", slot))
 	}
 
 	for _, key := range want {
@@ -231,4 +227,108 @@ func TestTheAcceptedPortsAreTheOnesTheManifestAllows(t *testing.T) {
 	}
 
 	t.Fatal("module.yaml declares no egress for connect_url")
+}
+
+func TestAKindTestSendsThatKindsMessageAndSaysWhatItDid(t *testing.T) {
+	use(t, defaults(t))
+
+	var sent []Message
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"kind":"attention"}`))
+	routes(func(_ context.Context, m Message) error { sent = append(sent, m); return nil }, testKit{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || len(sent) != 1 {
+		t.Fatalf("%d %s sent %d", rec.Code, rec.Body, len(sent))
+	}
+
+	if !strings.Contains(sent[0].Title, "needs you") || !strings.Contains(rec.Body.String(), `"picture":"none"`) {
+		t.Fatalf("%+v %s", sent[0], rec.Body)
+	}
+}
+
+func TestAKindTestRefusesAKindItDoesNotKnow(t *testing.T) {
+	use(t, defaults(t))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"kind":"nope"}`))
+	routes(func(context.Context, Message) error { t.Error("sent"); return nil }, testKit{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "UNKNOWN_KIND") {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAKindTestWithABrokenBodyIsRefused(t *testing.T) {
+	use(t, defaults(t))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{`))
+	routes(func(context.Context, Message) error { t.Error("sent"); return nil }, testKit{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+}
+
+// The message types the test route takes are the ones the module has, so a type
+// added in Go and forgotten in openapi.json fails here. The refusal for an
+// unknown type lists them from the same slice.
+func TestTheTestRouteTakesTheKindsTheModuleHas(t *testing.T) {
+	document, err := os.ReadFile("openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var api struct {
+		Paths map[string]map[string]struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema struct {
+						Properties struct {
+							Kind struct {
+								Enum []string `json:"enum"`
+							} `json:"kind"`
+						} `json:"properties"`
+					} `json:"schema"`
+				} `json:"content"`
+			} `json:"requestBody"`
+		} `json:"paths"`
+	}
+
+	if err = json.Unmarshal(document, &api); err != nil {
+		t.Fatal(err)
+	}
+
+	got := api.Paths["/test"]["post"].RequestBody.Content["application/json"].Schema.Properties.Kind.Enum
+	if !slices.Equal(got, kinds) {
+		t.Fatalf("openapi.json lets /test take %v, the module has %v", got, kinds)
+	}
+}
+
+func TestAPictureThatTakesTheWholeBudgetDoesNotStarveTheSend(t *testing.T) {
+	use(t, withRule(t, "started", func(r *Rule) { r.Image = imageCamera }))
+
+	s := settings()
+	s.Cameras = map[string]string{"S1": "cam-one"}
+	use(t, s)
+
+	kit := testKit{
+		budget: 50 * time.Millisecond,
+		snapshot: func(ctx context.Context, _ Settings, _ string) ([]byte, string, error) {
+			<-ctx.Done()
+
+			return nil, "", ctx.Err()
+		},
+	}
+
+	var sendErr error
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"kind":"started"}`))
+	routes(func(ctx context.Context, _ Message) error { sendErr = ctx.Err(); return sendErr }, kit).ServeHTTP(rec, req)
+
+	if sendErr != nil || rec.Code != http.StatusOK {
+		t.Fatalf("the send had an expired context (%v): %d %s", sendErr, rec.Code, rec.Body)
+	}
 }

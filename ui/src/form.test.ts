@@ -14,6 +14,7 @@ import {
   preview,
   problems,
   readForm,
+  kindTestOutcome,
   templateProblem,
   toSettings,
   type Form,
@@ -99,10 +100,7 @@ describe('reading what the host holds', () => {
       image_finished: 'camera',
       muted_printers: ' A , B ,,',
       connect_url: 'http://127.0.0.1:8080',
-      camera1_printer: 'SER-A',
-      camera1_name: 'bench-top',
-      camera4_printer: 'SER-B',
-      camera4_name: 'mk4s',
+      cameras: JSON.stringify({ 'SER-A': 'bench-top', 'SER-B': 'mk4s' }),
     });
 
     expect(form.rules.started.on).toBe(false);
@@ -161,7 +159,7 @@ describe('writing what the host should hold', () => {
     expect(Object.values(out)).not.toContain(MARKER);
   });
 
-  it('writes booleans and numbers as text, and cameras into slots in serial order', () => {
+  it('writes booleans and numbers as text, and every camera into one setting in serial order', () => {
     const form = base();
     form.rules.started.on = false;
     form.rules.failed.priority = -1;
@@ -170,11 +168,14 @@ describe('writing what the host should hold', () => {
     const out = toSettings(form, saved());
     expect(out.notify_started).toBe('false');
     expect(out.priority_failed).toBe('-1');
-    expect(out.camera1_printer).toBe('SER-A');
-    expect(out.camera1_name).toBe('cam a');
-    expect(out.camera2_printer).toBe('SER-B');
-    expect(out.camera3_printer).toBe('');
-    expect(out.camera8_name).toBe('');
+    expect(out.cameras).toBe('{"SER-A":"cam a","SER-B":"cam b"}');
+    expect(Object.keys(out).filter((k) => k.startsWith('camera'))).toEqual([
+      'cameras',
+    ]);
+  });
+
+  it('writes no cameras as an empty setting', () => {
+    expect(toSettings(base(), saved()).cameras).toBe('');
   });
 
   it('writes the muted serials as one list', () => {
@@ -198,12 +199,28 @@ describe('writing what the host should hold', () => {
     expect(back.connectUrl).toBe(form.connectUrl);
   });
 
-  it('does not offer more cameras than the module has slots for', () => {
+  it('has no limit on the printers that have a camera', () => {
     const form = base();
     form.cameras = Object.fromEntries(
-      Array.from({ length: 9 }, (_, i) => [`S${String(i)}`, `c${String(i)}`]),
+      Array.from({ length: 40 }, (_, i) => [`S${String(i)}`, `c${String(i)}`]),
     );
-    expect(problems(form, saved()).cameras).toBeDefined();
+    expect(problems(form, saved()).cameras).toBeUndefined();
+    expect(
+      Object.keys(fromConfig(toSettings(form, saved())).cameras),
+    ).toHaveLength(40);
+  });
+
+  it('opens on a cameras setting that is not what the page writes', () => {
+    for (const text of [
+      'SER-A=cam',
+      '[1]',
+      '{"A":5}',
+      '{"":"x"}',
+      'null',
+      '',
+    ]) {
+      expect(fromConfig({ cameras: text }).cameras).toEqual({});
+    }
   });
 });
 
@@ -365,8 +382,7 @@ describe('values the host returns typed', () => {
       notify_cancelled: true,
       priority_failed: -2,
       priority_started: 1,
-      camera1_printer: 'A',
-      camera1_name: 'bench-top',
+      cameras: JSON.stringify({ A: 'bench-top' }),
     });
 
     expect(form.rules.started.on).toBe(false);
@@ -450,5 +466,51 @@ describe('the time zone the page starts with', () => {
     const { form, original } = readForm({}, 'UTC');
     form.rules.started.on = false;
     expect(original.rules.started.on).toBe(DEFAULT_RULES.started.on);
+  });
+});
+
+describe('what a message type test tells the person', () => {
+  it('names the printer when no picture was asked for', () => {
+    expect(
+      kindTestOutcome({
+        printer: 'MK4S',
+        picture: 'none',
+        picture_problem: '',
+      }),
+    ).toEqual({ what: 'plain', printer: 'MK4S' });
+  });
+
+  it('names the picture that went with the message', () => {
+    expect(
+      kindTestOutcome({
+        printer: 'MK4S',
+        picture: 'camera',
+        picture_problem: '',
+      }),
+    ).toEqual({ what: 'picture', printer: 'MK4S', picture: 'camera' });
+  });
+
+  it('gives the reason first when a picture was asked for and not got', () => {
+    expect(
+      kindTestOutcome({
+        printer: 'MK4S',
+        picture: 'none',
+        picture_problem: 'Prusa Connect answered 401',
+      }),
+    ).toEqual({ what: 'no_picture', reason: 'Prusa Connect answered 401' });
+
+    // A picture that went while another camera failed says both.
+    expect(
+      kindTestOutcome({
+        printer: 'Core One',
+        picture: 'camera',
+        picture_problem: 'the camera x of MK4S: down',
+      }),
+    ).toEqual({
+      what: 'picture_but',
+      printer: 'Core One',
+      picture: 'camera',
+      reason: 'the camera x of MK4S: down',
+    });
   });
 });

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/prusa3d/prusa-connect/sdk/fault"
 )
@@ -40,6 +41,23 @@ var (
 		"Set pushover_token and pushover_user in this module's settings, then try again.",
 		fault.RetryNever,
 		fault.ShowDetail,
+	))
+
+	// BadRequest is a request body this module cannot read.
+	BadRequest = fault.Register(faultDomain, "BAD_REQUEST", http.StatusBadRequest, fault.Document(
+		"This module cannot read that request",
+		"Send the JSON body openapi.json describes, or none.",
+		fault.RetryNever,
+		fault.ShowDetail,
+	))
+
+	// UnknownKind is a test asked for a message type this module does not have.
+	UnknownKind = fault.Register(faultDomain, "UNKNOWN_KIND", http.StatusBadRequest, fault.Document(
+		"This module has no message of that type",
+		"Use one of "+strings.Join(kinds, ", ")+".",
+		fault.RetryNever,
+		fault.ShowDetail,
+		"kind",
 	))
 
 	// SendFailed is a message Pushover did not take.

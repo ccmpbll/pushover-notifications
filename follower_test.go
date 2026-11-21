@@ -113,7 +113,7 @@ func useRaw(t *testing.T, raw string) {
 	use(t, s)
 }
 
-const picturesOn = `,"connect_url":"http://127.0.0.1:8080","connect_token":"tok","camera1_printer":"SER-ABC","camera1_name":"bench-top"`
+const picturesOn = `,"connect_url":"http://127.0.0.1:8080","connect_token":"tok","cameras":"{\"SER-ABC\":\"bench-top\"}"`
 
 type rig struct {
 	f      *follower

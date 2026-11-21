@@ -168,3 +168,94 @@ func TestACameraNameWithAwkwardCharactersIsEscapedIntoOneSegment(t *testing.T) {
 		t.Errorf("path %q", gotPath)
 	}
 }
+
+func TestARefusedPictureSaysWhatToFix(t *testing.T) {
+	cases := []struct {
+		status    int
+		thumbnail bool
+		want      []string
+	}{
+		{http.StatusUnauthorized, false, []string{"HTTP 401", "expired"}},
+		{http.StatusForbidden, true, []string{"HTTP 403", "scope operate"}},
+		{http.StatusForbidden, false, []string{"HTTP 403", "scope read"}},
+		{http.StatusNotFound, false, []string{"HTTP 404", "camera"}},
+		{http.StatusBadGateway, false, []string{"HTTP 502"}},
+	}
+
+	for _, c := range cases {
+		api, s := connectServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(c.status) })
+
+		var err error
+		if c.thumbnail {
+			_, _, err = api.Thumbnail(context.Background(), s, "d", "/usb/a.bgcode")
+		} else {
+			_, _, err = api.Snapshot(context.Background(), s, "cam")
+		}
+
+		if err == nil {
+			t.Fatalf("%d: no error", c.status)
+		}
+
+		for _, want := range c.want {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%d: %q does not say %q", c.status, err, want)
+			}
+		}
+
+		if strings.Contains(err.Error(), s.ConnectToken) {
+			t.Errorf("%d: the token is in %q", c.status, err)
+		}
+	}
+}
+
+func TestAConnectRefusalCarriesWhatConnectSaid(t *testing.T) {
+	api, s := connectServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"title":"Bad gateway","detail":"the camera did not answer within 5s\nretry tok_secret123 later"}`))
+	})
+
+	_, _, err := api.Snapshot(context.Background(), s, "cam")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 502") || !strings.Contains(err.Error(), "the camera did not answer within 5s retry") {
+		t.Fatalf("%v", err)
+	}
+
+	if strings.Contains(err.Error(), s.ConnectToken) {
+		t.Fatalf("the token is in %q", err)
+	}
+
+	// A body that is not a problem document adds nothing, and a long one is cut.
+	for _, body := range []string{`<html>bad gateway</html>`, ``} {
+		api, s = connectServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(body))
+		})
+
+		_, _, err = api.Snapshot(context.Background(), s, "cam")
+		if err == nil || err.Error() != "Prusa Connect answered HTTP 502, so there is no picture" {
+			t.Errorf("%q: %v", body, err)
+		}
+	}
+
+	api, s = connectServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"detail":"` + strings.Repeat("x", 500) + `"}`))
+	})
+
+	_, _, err = api.Snapshot(context.Background(), s, "cam")
+	if err == nil || len(err.Error()) > 300 {
+		t.Fatalf("a long detail was not cut: %d", len(err.Error()))
+	}
+}
+
+func TestAConnectRefusalWithOnlyATitleSaysTheTitle(t *testing.T) {
+	api, s := connectServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"title":"The camera is unavailable"}`))
+	})
+
+	_, _, err := api.Snapshot(context.Background(), s, "cam")
+	if err == nil || !strings.Contains(err.Error(), "The camera is unavailable") {
+		t.Fatalf("%v", err)
+	}
+}

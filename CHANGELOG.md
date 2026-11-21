@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Each message type has its own Send test, with sample values and a real camera or thumbnail picture. A picture that fails says why.
 - Sends a Pushover message for a print that started, finished, failed or was cancelled, and for a printer that shows a dialog and waits, or goes offline during a print.
 - A print that ends without a result is reported as a failure that says so.
 - A settings page: account, a test message, and for each message type on or off, priority, sound, title and text with tags and a live preview, and a picture. Printers can be muted and given a camera.

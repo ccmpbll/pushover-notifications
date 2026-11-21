@@ -31,9 +31,6 @@ var (
 	soundPattern = regexp.MustCompile(`^[a-z]{1,20}$`)
 )
 
-// maxCameras is how many printers can have a camera, one pair of settings each.
-const maxCameras = 8
-
 // Pictures a message can carry.
 const (
 	imageNone      = "none"
@@ -112,7 +109,6 @@ func (s Settings) configured() bool { return s.Token != "" && s.User != "" }
 func (s Settings) muted(serial string) bool { return serial != "" && s.Muted[serial] }
 
 var (
-	cameraKey = regexp.MustCompile(`^camera([0-9]+)_(printer|name)$`)
 	// cameraName is what Connect calls a camera. It goes into a URL path, so
 	// the characters that would change the path are refused.
 	cameraBad = regexp.MustCompile(`[/\\?#%\x00-\x1f\x7f]`)
@@ -134,8 +130,6 @@ func (s *Settings) UnmarshalJSON(data []byte) error {
 
 	*s = Settings{Rules: defaultRules(), Muted: map[string]bool{}, Cameras: map[string]string{}}
 
-	slots := map[int]*[2]string{}
-
 	for key, value := range raw {
 		value = strings.TrimSpace(value)
 
@@ -156,22 +150,18 @@ func (s *Settings) UnmarshalJSON(data []byte) error {
 					s.Muted[serial] = true
 				}
 			}
-		default:
-			if match := cameraKey.FindStringSubmatch(key); match != nil {
-				if err := readCameraSlot(slots, match, value); err != nil {
-					return err
-				}
-
-				continue
+		case "cameras":
+			if err := s.readCameras(value); err != nil {
+				return err
 			}
-
+		default:
 			if err := s.rule(key, value); err != nil {
 				return err
 			}
 		}
 	}
 
-	return s.pairCameras(slots)
+	return nil
 }
 
 // flatten reads the settings as text. The host sends each in the type the
@@ -204,47 +194,36 @@ func flatten(data []byte) (map[string]string, error) {
 	return out, nil
 }
 
-func readCameraSlot(slots map[int]*[2]string, match []string, value string) error {
-	slot, err := strconv.Atoi(match[1])
-	if err != nil || slot < 1 || slot > maxCameras {
-		return fmt.Errorf("camera%s_%s names a camera slot outside 1 to %d", match[1], match[2], maxCameras)
+// readCameras reads the camera of each printer: a JSON object of printer serial
+// to the camera's name in Prusa Connect. It holds as many printers as there are.
+func (s *Settings) readCameras(value string) error {
+	if value == "" {
+		return nil
 	}
 
-	if slots[slot] == nil {
-		slots[slot] = &[2]string{}
+	var raw map[string]string
+	if err := json.Unmarshal([]byte(value), &raw); err != nil {
+		return errors.New(`cameras is not a JSON object of printer serial to camera name, such as {"SERIAL":"camera name"}`)
 	}
 
-	if match[2] == "printer" {
-		slots[slot][0] = value
-	} else {
-		slots[slot][1] = value
-	}
+	for serial, name := range raw {
+		serial, name = strings.TrimSpace(serial), strings.TrimSpace(name)
 
-	return nil
-}
-
-// pairCameras turns the slots into the camera of each printer. A slot with
-// only one of its two settings, or a printer given two cameras, is refused.
-func (s *Settings) pairCameras(slots map[int]*[2]string) error {
-	for slot := 1; slot <= maxCameras; slot++ {
-		held := slots[slot]
-		if held == nil || (held[0] == "" && held[1] == "") {
-			continue
+		// Two entries that differ only by spaces are one printer given two
+		// cameras, and the map's order would pick one at random.
+		if _, again := s.Cameras[serial]; again {
+			return errors.New("cameras names a printer twice")
 		}
 
-		if held[0] == "" || held[1] == "" {
-			return fmt.Errorf("camera%d needs both camera%d_printer and camera%d_name, or neither", slot, slot, slot)
+		if serial == "" || name == "" {
+			return errors.New("cameras needs a printer serial and a camera name for every camera")
 		}
 
-		if len([]rune(held[1])) > maxCameraName || cameraBad.MatchString(held[1]) {
-			return fmt.Errorf("camera%d_name is not a camera name: up to %d characters, without / ? # %%", slot, maxCameraName)
+		if len([]rune(name)) > maxCameraName || cameraBad.MatchString(name) {
+			return fmt.Errorf("a camera name in cameras is not one: up to %d characters, without / ? # %%", maxCameraName)
 		}
 
-		if _, again := s.Cameras[held[0]]; again {
-			return fmt.Errorf("camera%d_printer repeats a printer that already has a camera", slot)
-		}
-
-		s.Cameras[held[0]] = held[1]
+		s.Cameras[serial] = name
 	}
 
 	return nil

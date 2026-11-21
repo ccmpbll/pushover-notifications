@@ -30,7 +30,6 @@ export interface Rule {
 
 export const MIN_PRIORITY = -2;
 export const MAX_PRIORITY = 1;
-export const MAX_CAMERAS = 8;
 export const MAX_TITLE = 250;
 export const MAX_BODY = 1024;
 
@@ -170,6 +169,29 @@ const flag = (text: string, fallback: boolean): boolean => {
 const isImage = (value: string): value is Image =>
   (IMAGES as readonly string[]).includes(value);
 
+/**
+ * The camera of each printer from the cameras setting, a JSON object of serial
+ * to camera name. Text that is not that is no cameras, so a page opened on a
+ * setting written some other way still opens.
+ */
+const camerasOf = (text: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  if (text === '') return out;
+
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+      return out;
+    for (const [serial, name] of Object.entries(parsed))
+      if (typeof name === 'string' && serial !== '' && name !== '')
+        out[serial] = name;
+  } catch {
+    // Not JSON: no cameras.
+  }
+
+  return out;
+};
+
 /** What the host holds, as a form. A key it cannot read stays at its default. */
 export const fromConfig = (config: Readonly<Record<string, unknown>>): Form => {
   const rules = {} as Record<Kind, Rule>;
@@ -198,12 +220,7 @@ export const fromConfig = (config: Readonly<Record<string, unknown>>): Form => {
     };
   }
 
-  const cameras: Record<string, string> = {};
-  for (let slot = 1; slot <= MAX_CAMERAS; slot += 1) {
-    const printer = word(config, `camera${String(slot)}_printer`);
-    const name = word(config, `camera${String(slot)}_name`);
-    if (printer !== '' && name !== '') cameras[printer] = name;
-  }
+  const cameras = camerasOf(word(config, 'cameras'));
 
   return {
     token: '',
@@ -273,14 +290,15 @@ export const toSettings = (
     out[`image_${kind}`] = r.image;
   }
 
+  // One setting holds every printer's camera, in serial order so the same
+  // choice is always the same text.
   const serials = Object.keys(form.cameras).sort();
-  for (let slot = 1; slot <= MAX_CAMERAS; slot += 1) {
-    const serial = serials[slot - 1];
-    out[`camera${String(slot)}_printer`] = serial ?? '';
-    out[`camera${String(slot)}_name`] = serial
-      ? (form.cameras[serial] ?? '')
-      : '';
-  }
+  out.cameras =
+    serials.length === 0
+      ? ''
+      : JSON.stringify(
+          Object.fromEntries(serials.map((s) => [s, form.cameras[s] ?? ''])),
+        );
 
   return out;
 };
@@ -477,9 +495,6 @@ export const problems = (form: Form, saved: Saved): Record<string, string> => {
     found.connect =
       'A picture needs the address of Prusa Connect and a read-only API token.';
 
-  if (Object.keys(form.cameras).length > MAX_CAMERAS)
-    found.cameras = `At most ${String(MAX_CAMERAS)} printers can have a camera.`;
-
   for (const kind of KINDS) {
     const title = templateProblem(kind, form.rules[kind].title, 'title');
     if (title) found[`title.${kind}`] = title;
@@ -507,3 +522,42 @@ const normal = (form: Form): string =>
 /** Whether the form differs from the one it was read as. */
 export const dirty = (form: Form, original: Form): boolean =>
   normal(form) !== normal(original);
+
+/** What a message type's test did, as the module answers it. */
+export interface KindTestAnswer {
+  printer: string;
+  picture: string;
+  picture_problem: string;
+}
+
+export type KindTestOutcome =
+  | { what: 'no_picture'; reason: string }
+  | { what: 'picture'; printer: string; picture: string }
+  | { what: 'picture_but'; printer: string; picture: string; reason: string }
+  | { what: 'plain'; printer: string };
+
+/**
+ * What to tell the person about a test. A picture that was asked for and not
+ * got comes first: the text went out, and the reason is the point. A picture
+ * that went while another camera failed is both: the person needs to hear about
+ * the camera that is down.
+ */
+export const kindTestOutcome = (answer: KindTestAnswer): KindTestOutcome => {
+  if (answer.picture !== 'none' && answer.picture_problem !== '')
+    return {
+      what: 'picture_but',
+      printer: answer.printer,
+      picture: answer.picture,
+      reason: answer.picture_problem,
+    };
+  if (answer.picture_problem !== '')
+    return { what: 'no_picture', reason: answer.picture_problem };
+  if (answer.picture !== 'none')
+    return {
+      what: 'picture',
+      printer: answer.printer,
+      picture: answer.picture,
+    };
+
+  return { what: 'plain', printer: answer.printer };
+};

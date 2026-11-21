@@ -23,16 +23,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -122,14 +125,46 @@ func run() error {
 		return fmt.Errorf("build the session: %w", err)
 	}
 
-	maps.Copy(serves, methods(send))
+	devices := deviceapi.NewClient(conn)
+	pictures := &connectAPI{client: connectClient}
+
+	// What the per-type tests reach: the printers the host knows, the print each
+	// last had, and the two kinds of picture.
+	kit := testKit{
+		printers: func(ctx context.Context, most int) ([]testPrinter, error) {
+			return collectPrinters(ctx, most, func(ctx context.Context, offset, limit int) ([]testPrinter, int, error) {
+				page, err := devices.List(ctx, deviceapi.ListParams{Limit: limit, Offset: offset})
+				if err != nil {
+					return nil, 0, err
+				}
+
+				out := make([]testPrinter, 0, len(page.Items))
+				for _, d := range page.Items {
+					out = append(out, testPrinter{ID: d.ID, Name: d.Name, Serial: d.Serial, Away: !d.Connected})
+				}
+
+				return out, page.Total, nil
+			})
+		},
+		lastPrint: func(ctx context.Context, id string) (testPrint, bool) {
+			jobs, err := devices.Jobs(ctx, deviceapi.JobsParams{ID: id})
+			if err != nil {
+				return testPrint{}, false
+			}
+
+			return lastPrintOf(jobs)
+		},
+		thumbnail: pictures.Thumbnail,
+		snapshot:  pictures.Snapshot,
+	}
+
+	maps.Copy(serves, methods(send, kit))
 
 	// The pid is here because the host's log is the only place a person sees
 	// this process. Nothing on the wire carries it.
 	fmt.Fprintf(os.Stderr, "%s %s is serving on stdio as pid %d\n", name, release, os.Getpid())
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	devices := deviceapi.NewClient(conn)
 	box := newOutbox(send, log)
 
 	events := &follower{
@@ -157,8 +192,8 @@ func run() error {
 		// it is installed.
 		energy: plugPower{call: routesapi.NewClient(conn).Call}.Read,
 		// Pictures come from Prusa Connect's own HTTP API, with a read-only token.
-		thumbnail: (&connectAPI{client: connectClient}).Thumbnail,
-		snapshot:  (&connectAPI{client: connectClient}).Snapshot,
+		thumbnail: pictures.Thumbnail,
+		snapshot:  pictures.Snapshot,
 	}
 
 	go box.Run(ctx)
@@ -173,7 +208,7 @@ func run() error {
 
 // methods is the lifecycle set every child answers, plus the one call that
 // carries this module's own HTTP surface.
-func methods(send func(context.Context, Message) error) wirerpc.Methods {
+func methods(send func(context.Context, Message) error, kit testKit) wirerpc.Methods {
 	return wirerpc.Methods{
 		wirerpc.MethodInfo: func(context.Context, wirerpc.Call) (any, error) {
 			return routesapi.Describe(
@@ -206,14 +241,14 @@ func methods(send func(context.Context, Message) error) wirerpc.Methods {
 
 			return nil, nil
 		},
-		routesapi.MethodServe: routesapi.Serve(routes(send)),
+		routesapi.MethodServe: routesapi.Serve(routes(send, kit)),
 	}
 }
 
 // routes is the surface this module serves. The paths carry no prefix: /test
 // here is /api/v1/modules/com.github.aux.ccmpbll.pushover-notifications/test to
 // a caller.
-func routes(send func(context.Context, Message) error) http.Handler {
+func routes(send func(context.Context, Message) error, kit testKit) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /test", func(w http.ResponseWriter, r *http.Request) {
@@ -223,15 +258,54 @@ func routes(send func(context.Context, Message) error) http.Handler {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
+		// The body is optional. Without a kind this is the plain account test.
+		var ask struct {
+			Kind string `json:"kind"`
+		}
 
-		err := send(ctx, Message{
+		if r.Body != nil {
+			body, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+			if err == nil && len(bytes.TrimSpace(body)) > 0 {
+				err = json.Unmarshal(body, &ask)
+			}
+
+			if err != nil {
+				refuse(w, r, BadRequest.New("the request body is not the JSON this route takes"))
+
+				return
+			}
+		}
+
+		message := Message{
 			Title: "Pushover Notifications: test",
 			Body:  "If you can read this, notifications from Prusa Connect work.",
 			Time:  time.Now(),
-		})
-		if err != nil {
+		}
+		report := testReport{Picture: imageNone}
+
+		s := settings()
+
+		if ask.Kind != "" {
+			if !slices.Contains(kinds, ask.Kind) {
+				refuse(w, r, UnknownKind.New("no message of type "+ask.Kind).With(fault.StringParam("kind", ask.Kind)))
+
+				return
+			}
+		}
+
+		// The pictures have their own budget, and the send its own time after
+		// them, so a camera that is down cannot leave the send with none.
+		if ask.Kind != "" {
+			composing, stop := context.WithTimeout(r.Context(), 30*time.Second)
+			message, report = kit.compose(composing, s, ask.Kind, time.Now())
+
+			stop()
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
+
+		if err := send(ctx, message); err != nil {
 			reason := "the message could not be sent"
 			if failed, ok := errors.AsType[*sendError](err); ok {
 				reason = failed.Reason
@@ -242,7 +316,12 @@ func routes(send func(context.Context, Message) error) http.Handler {
 			return
 		}
 
-		answer(w, http.StatusOK, map[string]any{"sent": true})
+		answer(w, http.StatusOK, map[string]any{
+			"sent":            true,
+			"printer":         report.Printer,
+			"picture":         report.Picture,
+			"picture_problem": report.Problem,
+		})
 	})
 
 	// Everything else is this module's own refusal. It carries the code from

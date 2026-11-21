@@ -199,70 +199,10 @@ options:
     type: string
     default: "none"
     summary: "A picture on the lost message: none, thumbnail (inside the print file) or camera. Needs connect_url and connect_token. Must be none: the printer is gone."
-  - key: camera1_printer
+  - key: cameras
     type: string
     default: ""
-    summary: "Camera 1: the serial of the printer it watches. Set it together with camera1_name."
-  - key: camera1_name
-    type: string
-    default: ""
-    summary: "Camera 1: the name of the camera in Prusa Connect, for the printer's pictures."
-  - key: camera2_printer
-    type: string
-    default: ""
-    summary: "Camera 2: the serial of the printer it watches. Set it together with camera2_name."
-  - key: camera2_name
-    type: string
-    default: ""
-    summary: "Camera 2: the name of the camera in Prusa Connect, for the printer's pictures."
-  - key: camera3_printer
-    type: string
-    default: ""
-    summary: "Camera 3: the serial of the printer it watches. Set it together with camera3_name."
-  - key: camera3_name
-    type: string
-    default: ""
-    summary: "Camera 3: the name of the camera in Prusa Connect, for the printer's pictures."
-  - key: camera4_printer
-    type: string
-    default: ""
-    summary: "Camera 4: the serial of the printer it watches. Set it together with camera4_name."
-  - key: camera4_name
-    type: string
-    default: ""
-    summary: "Camera 4: the name of the camera in Prusa Connect, for the printer's pictures."
-  - key: camera5_printer
-    type: string
-    default: ""
-    summary: "Camera 5: the serial of the printer it watches. Set it together with camera5_name."
-  - key: camera5_name
-    type: string
-    default: ""
-    summary: "Camera 5: the name of the camera in Prusa Connect, for the printer's pictures."
-  - key: camera6_printer
-    type: string
-    default: ""
-    summary: "Camera 6: the serial of the printer it watches. Set it together with camera6_name."
-  - key: camera6_name
-    type: string
-    default: ""
-    summary: "Camera 6: the name of the camera in Prusa Connect, for the printer's pictures."
-  - key: camera7_printer
-    type: string
-    default: ""
-    summary: "Camera 7: the serial of the printer it watches. Set it together with camera7_name."
-  - key: camera7_name
-    type: string
-    default: ""
-    summary: "Camera 7: the name of the camera in Prusa Connect, for the printer's pictures."
-  - key: camera8_printer
-    type: string
-    default: ""
-    summary: "Camera 8: the serial of the printer it watches. Set it together with camera8_name."
-  - key: camera8_name
-    type: string
-    default: ""
-    summary: "Camera 8: the name of the camera in Prusa Connect, for the printer's pictures."
+    summary: 'The camera of each printer, for its pictures: a JSON object of printer serial to the camera name in Prusa Connect, such as {"SERIAL":"camera name"}. The page writes it. No limit on printers.'
 
 # Every connection this module makes outside Prusa Connect.
 egress:

@@ -19,10 +19,12 @@
     KINDS,
     browserZone,
     dirty,
+    kindTestOutcome,
     readForm,
     problems,
     toSettings,
     type Form,
+    type Kind,
   } from './form';
   import { heldHost } from './host';
   import MessageRow from './message-row.svelte';
@@ -57,6 +59,8 @@
   let testReason = $state('');
   // Connect refused a save because of the signed-in person's role.
   let readOnly = $state(false);
+  // Connect refused a test message because of the signed-in person's role.
+  let testRefused = $state(false);
 
   const messageOf = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
@@ -185,6 +189,68 @@
     test = 'idle';
   };
 
+  // One message type's test, written from its saved rule. The text says what
+  // went out, and why a picture the rule asks for did not.
+  const kindTestBlocked = $derived.by(() => {
+    if (testRefused) return t('pushover.error.test_refused');
+    if (!configured) return t('pushover.kind_test.save_first');
+    if (changed) return t('pushover.kind_test.unsaved');
+
+    return undefined;
+  });
+
+  const sendKindTest = async (
+    kind: Kind,
+  ): Promise<{ ok: boolean; text: string }> => {
+    try {
+      const result = await bind(host.client).sendTest(
+        { body: { kind } },
+        host.signal,
+      );
+      const outcome = kindTestOutcome(result);
+      switch (outcome.what) {
+        case 'no_picture':
+          return {
+            ok: true,
+            text: t('pushover.kind_test.no_picture', {
+              reason: outcome.reason,
+            }),
+          };
+        case 'picture_but':
+          return {
+            ok: true,
+            text: t('pushover.kind_test.ok_picture_but', {
+              printer: outcome.printer,
+              picture: t(`pushover.image.sample.${outcome.picture}`),
+              reason: outcome.reason,
+            }),
+          };
+        case 'picture':
+          return {
+            ok: true,
+            text: t('pushover.kind_test.ok_picture', {
+              printer: outcome.printer,
+              picture: t(`pushover.image.sample.${outcome.picture}`),
+            }),
+          };
+        default:
+          return {
+            ok: true,
+            text: t('pushover.kind_test.ok', { printer: outcome.printer }),
+          };
+      }
+    } catch (error) {
+      if (isRefused(error)) testRefused = true;
+
+      return {
+        ok: false,
+        text: isRefused(error)
+          ? t('pushover.error.test_refused')
+          : messageOf(error),
+      };
+    }
+  };
+
   const sendTest = async (): Promise<void> => {
     test = 'busy';
     try {
@@ -193,6 +259,7 @@
     } catch (error) {
       if (host.signal.aborted) return;
       test = 'bad';
+      if (isRefused(error)) testRefused = true;
       testReason = isRefused(error)
         ? t('pushover.error.test_refused')
         : messageOf(error);
@@ -327,7 +394,10 @@
             variant="secondary"
             size="sm"
             pending={test === 'busy'}
-            disabled={!configured || unsavedCredentials || test === 'busy'}
+            disabled={!configured ||
+              unsavedCredentials ||
+              testRefused ||
+              test === 'busy'}
             onclick={() => void sendTest()}
           >
             {t('pushover.test.send')}
@@ -403,6 +473,9 @@
               {kind}
               bind:rule={form.rules[kind]}
               {tasmota}
+              testBlocked={kindTestBlocked}
+              unsaved={changed}
+              ontest={sendKindTest}
               titleProblem={found[`title.${kind}`]}
               bodyProblem={found[`body.${kind}`]}
               onchange={noop}
@@ -481,10 +554,6 @@
             </div>
           </div>
         {/each}
-
-        {#if found.cameras}
-          <p class="text-xs text-destructive-text">{found.cameras}</p>
-        {/if}
       </CardContent>
     </Card>
 

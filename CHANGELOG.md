@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-11-21
 
 - Each message type has its own Send test, with sample values and a real camera or thumbnail picture. A picture that fails says why.
 - Sends a Pushover message for a print that started, finished, failed or was cancelled, and for a printer that shows a dialog and waits, or goes offline during a print.

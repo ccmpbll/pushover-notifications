@@ -5,8 +5,6 @@
 
 Sends a [Pushover](https://pushover.net) notification when a print starts, finishes or fails, or when a printer needs you.
 
-**Status: in development.** Not released yet.
-
 ## What it does
 
 - Tells you when a print **starts**, **finishes** or **fails**, and optionally when it is **cancelled**. A print that stops without saying how (a power cut looks like that) is reported as a failure that says so.

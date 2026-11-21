@@ -96,6 +96,11 @@
       form = read;
       original = stored;
       failure = undefined;
+      // The page was read, so the extension is up. After a save Connect drops
+      // this page and puts a new one up when the extension is back, and the
+      // old page's timer died with it, so the notice is taken away here and
+      // not left to its 30 second limit.
+      hideApplying();
     } catch (error) {
       if (!host.signal.aborted)
         failure = t('pushover.error.load', { reason: messageOf(error) });

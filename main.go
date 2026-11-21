@@ -131,8 +131,8 @@ func run() error {
 	// What the per-type tests reach: the printers the host knows, the print each
 	// last had, and the two kinds of picture.
 	kit := testKit{
-		printers: func(ctx context.Context) ([]testPrinter, error) {
-			return collectPrinters(ctx, func(ctx context.Context, offset, limit int) ([]testPrinter, int, error) {
+		printers: func(ctx context.Context, most int) ([]testPrinter, error) {
+			return collectPrinters(ctx, most, func(ctx context.Context, offset, limit int) ([]testPrinter, int, error) {
 				page, err := devices.List(ctx, deviceapi.ListParams{Limit: limit, Offset: offset})
 				if err != nil {
 					return nil, 0, err

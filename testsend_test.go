@@ -15,7 +15,7 @@ var testNow = time.Date(2026, 11, 21, 15, 30, 0, 0, time.UTC)
 
 func kitWith(printers ...testPrinter) testKit {
 	return testKit{
-		printers: func(context.Context) ([]testPrinter, error) { return printers, nil },
+		printers: func(context.Context, int) ([]testPrinter, error) { return printers, nil },
 		lastPrint: func(_ context.Context, id string) (testPrint, bool) {
 			if id == "d1" {
 				return testPrint{Display: "benchy.bgcode", Path: "/usb/benchy.bgcode"}, true
@@ -415,7 +415,7 @@ func TestAnUnlistedPrinterIsNotCalledOffWhenTheListIsMissing(t *testing.T) {
 	s.Cameras = map[string]string{"S1": "cam-one"}
 
 	kit := testKit{
-		printers: func(context.Context) ([]testPrinter, error) { return nil, errors.New("no list") },
+		printers: func(context.Context, int) ([]testPrinter, error) { return nil, errors.New("no list") },
 		snapshot: func(context.Context, Settings, string) ([]byte, string, error) { return nil, "", errors.New("502") },
 	}
 
@@ -465,7 +465,7 @@ func TestCollectPrintersReadsEveryPage(t *testing.T) {
 	}
 
 	pages := 0
-	got, err := collectPrinters(context.Background(), func(_ context.Context, offset, limit int) ([]testPrinter, int, error) {
+	got, err := collectPrinters(context.Background(), 0, func(_ context.Context, offset, limit int) ([]testPrinter, int, error) {
 		pages++
 
 		return all[offset:min(offset+limit, len(all))], len(all), nil
@@ -476,7 +476,7 @@ func TestCollectPrintersReadsEveryPage(t *testing.T) {
 	}
 
 	// A host that never stops answering is not followed for ever.
-	_, _ = collectPrinters(context.Background(), func(context.Context, int, int) ([]testPrinter, int, error) {
+	_, _ = collectPrinters(context.Background(), 0, func(context.Context, int, int) ([]testPrinter, int, error) {
 		pages++
 
 		return []testPrinter{{ID: "x"}}, 1 << 30, nil
@@ -488,7 +488,7 @@ func TestCollectPrintersReadsEveryPage(t *testing.T) {
 
 	// A page that fails after the first keeps what was read.
 	calls := 0
-	got, err = collectPrinters(context.Background(), func(context.Context, int, int) ([]testPrinter, int, error) {
+	got, err = collectPrinters(context.Background(), 0, func(context.Context, int, int) ([]testPrinter, int, error) {
 		calls++
 		if calls == 2 {
 			return nil, 0, errors.New("late")
@@ -504,7 +504,7 @@ func TestCollectPrintersReadsEveryPage(t *testing.T) {
 
 func TestCollectPrintersStopsAtAnEmptyPageWhateverTheTotalSays(t *testing.T) {
 	calls := 0
-	got, err := collectPrinters(context.Background(), func(context.Context, int, int) ([]testPrinter, int, error) {
+	got, err := collectPrinters(context.Background(), 0, func(context.Context, int, int) ([]testPrinter, int, error) {
 		calls++
 
 		return nil, 10, nil
@@ -512,5 +512,72 @@ func TestCollectPrintersStopsAtAnEmptyPageWhateverTheTotalSays(t *testing.T) {
 
 	if err != nil || len(got) != 0 || calls != 1 {
 		t.Fatalf("%d calls: %v %v", calls, got, err)
+	}
+}
+
+func TestCollectPrintersReadsOnlyAsManyAsAreWanted(t *testing.T) {
+	calls, asked := 0, 0
+
+	got, err := collectPrinters(context.Background(), 1, func(_ context.Context, _, limit int) ([]testPrinter, int, error) {
+		calls++
+		asked = limit
+
+		return []testPrinter{{ID: "a"}}, 450, nil
+	})
+
+	if err != nil || len(got) != 1 || calls != 1 || asked != 1 {
+		t.Fatalf("%d printers, %d calls, limit %d: %v", len(got), calls, asked, err)
+	}
+}
+
+func TestARowWithNoPictureReadsOnePrinterAndAPictureRowReadsThemAll(t *testing.T) {
+	var wanted []int
+
+	kit := kitWith(testPrinter{ID: "d1", Name: "MK4S", Serial: "S1"})
+	inner := kit.printers
+	kit.printers = func(ctx context.Context, most int) ([]testPrinter, error) {
+		wanted = append(wanted, most)
+
+		return inner(ctx, most)
+	}
+
+	kit.compose(context.Background(), defaults(t), "started", testNow)
+
+	s := withRule(t, "finished", func(r *Rule) { r.Image = imageThumbnail })
+	kit.compose(context.Background(), s, "finished", testNow)
+
+	if len(wanted) != 2 || wanted[0] != 1 || wanted[1] != 0 {
+		t.Fatalf("%v", wanted)
+	}
+}
+
+func TestAThumbnailTestStopsWhenThePictureBudgetIsSpent(t *testing.T) {
+	s := withRule(t, "finished", func(r *Rule) { r.Image = imageThumbnail })
+
+	printers := make([]testPrinter, 6)
+	for i := range printers {
+		printers[i] = testPrinter{ID: fmt.Sprintf("d%d", i), Name: fmt.Sprintf("P%d", i)}
+	}
+
+	reads := 0
+	kit := kitWith(printers...)
+	kit.budget = 50 * time.Millisecond
+	kit.lastPrint = func(ctx context.Context, _ string) (testPrint, bool) {
+		reads++
+
+		select {
+		case <-ctx.Done():
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		return testPrint{}, false
+	}
+
+	_, report := kit.compose(context.Background(), s, "finished", testNow)
+
+	// The first read waits out the budget, the rest are not made, and the
+	// reason is the time and not a missing print file.
+	if reads > 2 || !strings.Contains(report.Problem, "ran out of time") || strings.Contains(report.Problem, "no printer has a print file") {
+		t.Fatalf("%d reads: %q", reads, report.Problem)
 	}
 }

@@ -40,7 +40,9 @@ type testKit struct {
 	// pictureBudget. It is for the fetching only: the send has its own time.
 	budget time.Duration
 
-	printers  func(ctx context.Context) ([]testPrinter, error)
+	// printers reads the printers the host knows, at most most of them, or every
+	// one when most is zero.
+	printers  func(ctx context.Context, most int) ([]testPrinter, error)
 	lastPrint func(ctx context.Context, id string) (testPrint, bool)
 	thumbnail func(ctx context.Context, s Settings, deviceID, filePath string) ([]byte, string, error)
 	snapshot  func(ctx context.Context, s Settings, camera string) ([]byte, string, error)
@@ -79,9 +81,16 @@ func (k testKit) compose(ctx context.Context, s Settings, kind string, now time.
 	s.Rules = maps.Clone(s.Rules)
 	s.Rules[kind] = rule
 
+	// Only a picture needs to look through the printers. A row with none needs
+	// one, for the name in the sample text.
+	most := 1
+	if rule.Image != imageNone {
+		most = 0
+	}
+
 	var printers []testPrinter
 	if k.printers != nil {
-		printers, _ = k.printers(ctx)
+		printers, _ = k.printers(ctx, most)
 	}
 
 	budget := k.budget
@@ -213,6 +222,10 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 		}
 
 		for i := range printers {
+			if ctx.Err() != nil {
+				return picked{printer: first, problem: "the pictures ran out of time before a print file was found"}
+			}
+
 			last, ok := k.lastPrint(ctx, printers[i].ID)
 			if !ok || last.Path == "" {
 				continue
@@ -255,9 +268,13 @@ func lastPrintOf(jobs deviceapi.Jobs) (testPrint, bool) {
 
 // collectPrinters reads every page of the printers the host knows. list reads
 // one page from offset, at most limit long, and says how many printers there
-// are in all. A page that fails keeps what was read before it.
-func collectPrinters(ctx context.Context, list func(ctx context.Context, offset, limit int) (items []testPrinter, total int, err error)) ([]testPrinter, error) {
-	const limit = deviceapi.MaxPageLimit
+// are in all. A page that fails keeps what was read before it. most stops the
+// reading at that many printers, and zero reads every one.
+func collectPrinters(ctx context.Context, most int, list func(ctx context.Context, offset, limit int) (items []testPrinter, total int, err error)) ([]testPrinter, error) {
+	limit := deviceapi.MaxPageLimit
+	if most > 0 {
+		limit = min(limit, most)
+	}
 
 	var all []testPrinter
 
@@ -269,7 +286,7 @@ func collectPrinters(ctx context.Context, list func(ctx context.Context, offset,
 
 		all = append(all, items...)
 
-		if len(items) == 0 || len(all) >= total {
+		if len(items) == 0 || len(all) >= total || (most > 0 && len(all) >= most) {
 			break
 		}
 	}

@@ -535,10 +535,6 @@
             </div>
           </div>
         {/each}
-
-        {#if found.cameras}
-          <p class="text-xs text-destructive-text">{found.cameras}</p>
-        {/if}
       </CardContent>
     </Card>
 

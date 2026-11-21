@@ -10,6 +10,8 @@ import (
 	"slices"
 	"sort"
 	"time"
+
+	"github.com/prusa3d/prusa-connect/sdk/deviceapi"
 )
 
 // testPrinter is a printer the host knows.
@@ -64,42 +66,51 @@ func (k testKit) compose(ctx context.Context, s Settings, kind string, now time.
 		printers, _ = k.printers(ctx)
 	}
 
-	chosen, image, imageType, problem := k.pick(ctx, s, rule.Image, printers)
+	got := k.pick(ctx, s, rule.Image, printers)
 
 	name, file := samplePrinter, sampleFile
-	if chosen != nil {
-		name = printerName(chosen.Name)
+	if got.printer != nil {
+		name = printerName(got.printer.Name)
 
-		if k.lastPrint != nil {
-			if last, ok := k.lastPrint(ctx, chosen.ID); ok && fileOf(last.Display, last.Path) != "" {
-				file = fileOf(last.Display, last.Path)
-			}
+		// A thumbnail test has read the printer's print already.
+		if !got.hasPrint && k.lastPrint != nil {
+			got.print, got.hasPrint = k.lastPrint(ctx, got.printer.ID)
+		}
+
+		if got.hasPrint && fileOf(got.print.Display, got.print.Path) != "" {
+			file = fileOf(got.print.Display, got.print.Path)
 		}
 	}
 
 	m, _ := build(s, kind, facts{vals: sampleValues(s, kind, name, file, now), at: now})
 	m.Title = clip("Test: "+m.Title, maxTitle)
 
-	report := testReport{Printer: name, Picture: imageNone, Problem: problem}
+	report := testReport{Printer: name, Picture: imageNone, Problem: got.problem}
 
-	if image != nil {
-		m.Image, m.ImageType = image, imageType
+	if got.image != nil {
+		m.Image, m.ImageType = got.image, got.mediaType
 		report.Picture = rule.Image
 	}
 
 	return m, report
 }
 
-// pick chooses the printer a test is written for, and gets the picture the
-// rule asks for. A picture that cannot be got is a problem to report and not a
-// reason to send nothing.
-func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []testPrinter) (chosen *testPrinter, image []byte, mediaType, problem string) {
-	first := func() *testPrinter {
-		if len(printers) == 0 {
-			return nil
-		}
+// picked is the printer a test is written for and the picture the rule asked
+// for. A picture that cannot be got is a problem to report and not a reason to
+// send nothing. print is the printer's print when the choice had to read it.
+type picked struct {
+	printer   *testPrinter
+	print     testPrint
+	hasPrint  bool
+	image     []byte
+	mediaType string
+	problem   string
+}
 
-		return &printers[0]
+func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []testPrinter) picked {
+	var first *testPrinter
+	if len(printers) > 0 {
+		first = &printers[0]
 	}
 
 	switch mode {
@@ -114,29 +125,29 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 		sort.Strings(serials)
 
 		if len(serials) == 0 {
-			return first(), nil, "", "no printer has a camera chosen, in the Printers section"
+			return picked{printer: first, problem: "no printer has a camera chosen, in the Printers section"}
 		}
 
 		serial := serials[0]
-		chosen = &testPrinter{Name: serial, Serial: serial}
+		chosen := &testPrinter{Name: serial, Serial: serial}
 
 		if i := slices.IndexFunc(printers, func(p testPrinter) bool { return p.Serial == serial }); i >= 0 {
 			chosen = &printers[i]
 		}
 
 		if k.snapshot == nil {
-			return chosen, nil, "", "pictures are not available"
+			return picked{printer: chosen, problem: "pictures are not available"}
 		}
 
 		data, mt, err := k.snapshot(ctx, s, s.Cameras[serial])
 		if err != nil {
-			return chosen, nil, "", err.Error()
+			return picked{printer: chosen, problem: err.Error()}
 		}
 
-		return chosen, data, mt, ""
+		return picked{printer: chosen, image: data, mediaType: mt}
 	case imageThumbnail:
 		if k.thumbnail == nil || k.lastPrint == nil {
-			return first(), nil, "", "pictures are not available"
+			return picked{printer: first, problem: "pictures are not available"}
 		}
 
 		for i := range printers {
@@ -147,16 +158,37 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 
 			data, mt, err := k.thumbnail(ctx, s, printers[i].ID, last.Path)
 			if err != nil {
-				return &printers[i], nil, "", err.Error()
+				return picked{printer: &printers[i], print: last, hasPrint: true, problem: err.Error()}
 			}
 
-			return &printers[i], data, mt, ""
+			return picked{printer: &printers[i], print: last, hasPrint: true, image: data, mediaType: mt}
 		}
 
-		return first(), nil, "", "no printer has a print file to take a thumbnail from"
+		return picked{printer: first, problem: "no printer has a print file to take a thumbnail from"}
 	default:
-		return first(), nil, "", ""
+		return picked{printer: first}
 	}
+}
+
+// lastPrintOf is the print of a printer a test can use: the one with a file
+// path (the current print, else the last), and failing that one with only a
+// name, which gives the sample its file name but no thumbnail.
+func lastPrintOf(jobs deviceapi.Jobs) (testPrint, bool) {
+	candidates := []*deviceapi.Job{jobs.Current, jobs.Last}
+
+	for _, job := range candidates {
+		if job != nil && job.Path != "" {
+			return testPrint{Display: job.DisplayName, Path: job.Path}, true
+		}
+	}
+
+	for _, job := range candidates {
+		if job != nil && job.DisplayName != "" {
+			return testPrint{Display: job.DisplayName}, true
+		}
+	}
+
+	return testPrint{}, false
 }
 
 // sampleValues is a value for every tag a message type may use except the
@@ -171,7 +203,7 @@ func sampleValues(s Settings, kind, printer, file string, now time.Time) map[str
 		"started":      clock(now.Add(-83*time.Minute), loc),
 		"ended":        clock(now, loc),
 		"progress":     percent(42),
-		"time_printed": duration(83*60 + 0),
+		"time_printed": duration(83 * 60),
 		"filament":     filament(12300),
 		"dialog_title": "Filament runout",
 		"dialog_text":  "Load filament, then press Continue.",

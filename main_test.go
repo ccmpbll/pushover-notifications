@@ -274,3 +274,38 @@ func TestAKindTestWithABrokenBodyIsRefused(t *testing.T) {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 }
+
+// The message types the test route takes are the ones the module has, so a type
+// added in Go and forgotten in openapi.json fails here. The refusal for an
+// unknown type lists them from the same slice.
+func TestTheTestRouteTakesTheKindsTheModuleHas(t *testing.T) {
+	document, err := os.ReadFile("openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var api struct {
+		Paths map[string]map[string]struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema struct {
+						Properties struct {
+							Kind struct {
+								Enum []string `json:"enum"`
+							} `json:"kind"`
+						} `json:"properties"`
+					} `json:"schema"`
+				} `json:"content"`
+			} `json:"requestBody"`
+		} `json:"paths"`
+	}
+
+	if err = json.Unmarshal(document, &api); err != nil {
+		t.Fatal(err)
+	}
+
+	got := api.Paths["/test"]["post"].RequestBody.Content["application/json"].Schema.Properties.Kind.Enum
+	if !slices.Equal(got, kinds) {
+		t.Fatalf("openapi.json lets /test take %v, the module has %v", got, kinds)
+	}
+}

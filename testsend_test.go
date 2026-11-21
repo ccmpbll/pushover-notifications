@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prusa3d/prusa-connect/sdk/deviceapi"
 )
 
 var testNow = time.Date(2026, 11, 21, 15, 30, 0, 0, time.UTC)
@@ -244,5 +246,55 @@ func TestAThumbnailTestSkipsAPrinterWhosePrintHasNoFilePath(t *testing.T) {
 	m, report := kit.compose(context.Background(), s, "finished", testNow)
 	if report.Printer != "MK4S" || string(m.Image) != "thumb:d1:/usb/benchy.bgcode" {
 		t.Fatalf("%+v %q", report, m.Image)
+	}
+}
+
+func TestThePrintATestUsesIsTheOneWithAFilePath(t *testing.T) {
+	current := &deviceapi.Job{DisplayName: "running"}
+	last := &deviceapi.Job{DisplayName: "done", Path: "/usb/done.bgcode"}
+
+	// The current print has a name and no path, the last one has both: the path
+	// wins, so a thumbnail can be had.
+	got, ok := lastPrintOf(deviceapi.Jobs{Current: current, Last: last})
+	if !ok || got.Path != "/usb/done.bgcode" || got.Display != "done" {
+		t.Fatalf("%+v %v", got, ok)
+	}
+
+	// With no path anywhere the name is still the sample's file name.
+	got, ok = lastPrintOf(deviceapi.Jobs{Current: current, Last: &deviceapi.Job{}})
+	if !ok || got.Display != "running" || got.Path != "" {
+		t.Fatalf("%+v %v", got, ok)
+	}
+
+	if _, ok = lastPrintOf(deviceapi.Jobs{}); ok {
+		t.Fatal("a printer with no print has one")
+	}
+
+	// The current print is preferred when it has a path of its own.
+	got, _ = lastPrintOf(deviceapi.Jobs{
+		Current: &deviceapi.Job{Path: "/usb/now.bgcode"},
+		Last:    last,
+	})
+	if got.Path != "/usb/now.bgcode" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestAPrintersPrintIsReadOnceForAThumbnailTest(t *testing.T) {
+	s := withRule(t, "finished", func(r *Rule) { r.Image = imageThumbnail })
+
+	kit := kitWith(testPrinter{ID: "d1", Name: "MK4S", Serial: "S1"})
+	inner := kit.lastPrint
+	calls := 0
+	kit.lastPrint = func(ctx context.Context, id string) (testPrint, bool) {
+		calls++
+
+		return inner(ctx, id)
+	}
+
+	kit.compose(context.Background(), s, "finished", testNow)
+
+	if calls != 1 {
+		t.Fatalf("the print was read %d times", calls)
 	}
 }

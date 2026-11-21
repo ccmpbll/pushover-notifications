@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -197,8 +198,7 @@ func TestTextAndPictureSettingsThatAreRefused(t *testing.T) {
 func TestACameraPerPrinterAndTheConnectAddress(t *testing.T) {
 	s, err := parseSettings(t, `{
 		"connect_url":"http://127.0.0.1:8080/","connect_token":"tok_abcDEF123",
-		"camera1_printer":"SER-A","camera1_name":"bench-top",
-		"camera3_printer":"SER-B","camera3_name":"mk4s cam",
+		"cameras":"{\"SER-A\":\"bench-top\",\"SER-B\":\"mk4s cam\"}",
 		"image_finished":"thumbnail","image_failed":"camera"
 	}`)
 	if err != nil {
@@ -251,20 +251,21 @@ func TestPicturesNeedTheConnectAddressAndToken(t *testing.T) {
 
 func TestCameraAndConnectSettingsThatAreRefused(t *testing.T) {
 	cases := map[string]string{
-		"a printer without a camera":   `{"camera1_printer":"SER-A"}`,
-		"a camera without a printer":   `{"camera1_name":"bench-top"}`,
-		"a slot past the last":         `{"camera9_printer":"A","camera9_name":"c"}`,
-		"a slash in a camera name":     `{"camera1_printer":"A","camera1_name":"a/b"}`,
-		"a camera name that is long":   `{"camera1_printer":"A","camera1_name":"` + strings.Repeat("a", 65) + `"}`,
-		"the same printer twice":       `{"camera1_printer":"A","camera1_name":"x","camera2_printer":"A","camera2_name":"y"}`,
-		"an unknown camera field":      `{"camera1_colour":"A"}`,
-		"a scheme that is not http":    `{"connect_url":"ftp://127.0.0.1"}`,
-		"no host":                      `{"connect_url":"http:///x"}`,
-		"a password in the address":    `{"connect_url":"http://user:hunter2@127.0.0.1:8080"}`,
-		"a query in the address":       `{"connect_url":"http://127.0.0.1:8080/?a=b"}`,
-		"a space in the address":       `{"connect_url":"http://127.0.0.1 :8080"}`,
-		"a token with a space":         `{"connect_token":"a b"}`,
-		"a token that is far too long": `{"connect_token":"` + strings.Repeat("a", 513) + `"}`,
+		"cameras that are not JSON":        `{"cameras":"SER-A=bench-top"}`,
+		"cameras that are a list":          `{"cameras":"[\"SER-A\"]"}`,
+		"a camera that is not a name":      `{"cameras":"{\"SER-A\":5}"}`,
+		"a printer with an empty camera":   `{"cameras":"{\"SER-A\":\"\"}"}`,
+		"a camera for an empty serial":     `{"cameras":"{\"\":\"bench-top\"}"}`,
+		"a slash in a camera name":         `{"cameras":"{\"A\":\"a/b\"}"}`,
+		"a camera name that is long":       `{"cameras":"{\"A\":\"` + strings.Repeat("a", 65) + `\"}"}`,
+		"the old numbered camera settings": `{"camera1_printer":"A","camera1_name":"x"}`,
+		"a scheme that is not http":        `{"connect_url":"ftp://127.0.0.1"}`,
+		"no host":                          `{"connect_url":"http:///x"}`,
+		"a password in the address":        `{"connect_url":"http://user:hunter2@127.0.0.1:8080"}`,
+		"a query in the address":           `{"connect_url":"http://127.0.0.1:8080/?a=b"}`,
+		"a space in the address":           `{"connect_url":"http://127.0.0.1 :8080"}`,
+		"a token with a space":             `{"connect_token":"a b"}`,
+		"a token that is far too long":     `{"connect_token":"` + strings.Repeat("a", 513) + `"}`,
 	}
 
 	for name, raw := range cases {
@@ -425,5 +426,53 @@ func TestTheConnectAddressMustUseAPortTheManifestAllows(t *testing.T) {
 		if err == nil {
 			t.Errorf("%s was accepted", bad)
 		}
+	}
+}
+
+// A printer is not limited to a handful of cameras: there is one setting, and
+// it holds as many as there are printers.
+func TestAnyNumberOfPrintersCanHaveACamera(t *testing.T) {
+	pairs := map[string]string{}
+	for i := range 40 {
+		pairs[fmt.Sprintf("SER-%d", i)] = fmt.Sprintf("cam %d", i)
+	}
+
+	value, err := json.Marshal(pairs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := json.Marshal(map[string]string{"cameras": string(value)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := parseSettings(t, string(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(s.Cameras) != 40 || s.Cameras["SER-39"] != "cam 39" {
+		t.Fatalf("%d cameras", len(s.Cameras))
+	}
+}
+
+func TestNoCamerasIsAnEmptyOrAbsentSetting(t *testing.T) {
+	for _, raw := range []string{`{}`, `{"cameras":""}`, `{"cameras":"{}"}`, `{"cameras":null}`} {
+		s, err := parseSettings(t, raw)
+		if err != nil || len(s.Cameras) != 0 {
+			t.Errorf("%s: %v %v", raw, err, s.Cameras)
+		}
+	}
+}
+
+func TestSpacesAroundACameraAreNotPartOfIt(t *testing.T) {
+	s, err := parseSettings(t, `{"cameras":"{\" SER-A \":\"  bench-top \"}"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if s.Cameras["SER-A"] != "bench-top" || len(s.Cameras) != 1 {
+		t.Fatalf("%q", s.Cameras)
 	}
 }

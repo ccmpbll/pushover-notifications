@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -180,16 +179,12 @@ func TestTheManifestDeclaresExactlyTheKeysTheReaderAccepts(t *testing.T) {
 		declared[option.Key] = true
 	}
 
-	want := []string{"pushover_token", "pushover_user", "muted_printers", "connect_url", "connect_token", "timezone"}
+	want := []string{"pushover_token", "pushover_user", "muted_printers", "connect_url", "connect_token", "timezone", "cameras"}
 
 	for _, kind := range kinds {
 		for _, field := range []string{"notify", "priority", "sound", "title", "body", "image"} {
 			want = append(want, field+"_"+kind)
 		}
-	}
-
-	for slot := 1; slot <= maxCameras; slot++ {
-		want = append(want, fmt.Sprintf("camera%d_printer", slot), fmt.Sprintf("camera%d_name", slot))
 	}
 
 	for _, key := range want {

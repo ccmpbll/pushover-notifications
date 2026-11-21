@@ -173,7 +173,7 @@ func TestACameraThatDoesNotAnswerIsReportedWithItsReason(t *testing.T) {
 
 	m, report := kit.compose(context.Background(), s, "started", testNow)
 
-	if m.Image != nil || report.Picture != imageNone || report.Problem != "Prusa Connect answered 401" {
+	if m.Image != nil || report.Picture != imageNone || report.Problem != "the camera cam-one of MK4S: Prusa Connect answered 401" {
 		t.Fatalf("%+v", report)
 	}
 }
@@ -296,5 +296,59 @@ func TestAPrintersPrintIsReadOnceForAThumbnailTest(t *testing.T) {
 
 	if calls != 1 {
 		t.Fatalf("the print was read %d times", calls)
+	}
+}
+
+func TestACameraThatIsDownDoesNotHideOneThatWorks(t *testing.T) {
+	s := withRule(t, "started", func(r *Rule) { r.Image = imageCamera })
+	s.Cameras = map[string]string{"S1": "cam-one", "S2": "cam-two"}
+
+	kit := kitWith(
+		testPrinter{ID: "d1", Name: "MK4S", Serial: "S1"},
+		testPrinter{ID: "d2", Name: "Core One", Serial: "S2"},
+	)
+	kit.snapshot = func(_ context.Context, _ Settings, camera string) ([]byte, string, error) {
+		if camera == "cam-one" {
+			return nil, "", errors.New("Prusa Connect answered HTTP 502")
+		}
+
+		return []byte("snap:" + camera), "image/jpeg", nil
+	}
+
+	m, report := kit.compose(context.Background(), s, "started", testNow)
+
+	// The second camera's picture goes, with its printer's name, and the first
+	// camera's failure is still said.
+	if string(m.Image) != "snap:cam-two" || report.Printer != "Core One" || report.Picture != imageCamera {
+		t.Fatalf("%+v image %q", report, m.Image)
+	}
+
+	if !strings.Contains(report.Problem, "cam-one") || !strings.Contains(report.Problem, "MK4S") || !strings.Contains(report.Problem, "502") {
+		t.Fatalf("the failed camera is not named: %q", report.Problem)
+	}
+}
+
+func TestWhenEveryCameraIsDownEachIsNamed(t *testing.T) {
+	s := withRule(t, "started", func(r *Rule) { r.Image = imageCamera })
+	s.Cameras = map[string]string{"S1": "cam-one", "S2": "cam-two"}
+
+	kit := kitWith(
+		testPrinter{ID: "d1", Name: "MK4S", Serial: "S1"},
+		testPrinter{ID: "d2", Name: "Core One", Serial: "S2"},
+	)
+	kit.snapshot = func(context.Context, Settings, string) ([]byte, string, error) {
+		return nil, "", errors.New("down")
+	}
+
+	m, report := kit.compose(context.Background(), s, "started", testNow)
+
+	if m.Image != nil || report.Picture != imageNone {
+		t.Fatalf("%+v", report)
+	}
+
+	for _, want := range []string{"cam-one of MK4S", "cam-two of Core One"} {
+		if !strings.Contains(report.Problem, want) {
+			t.Errorf("%q is not in %q", want, report.Problem)
+		}
 	}
 }

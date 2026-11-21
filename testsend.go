@@ -6,9 +6,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/prusa3d/prusa-connect/sdk/deviceapi"
@@ -128,23 +130,33 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 			return picked{printer: first, problem: "no printer has a camera chosen, in the Printers section"}
 		}
 
-		serial := serials[0]
-		chosen := &testPrinter{Name: serial, Serial: serial}
-
-		if i := slices.IndexFunc(printers, func(p testPrinter) bool { return p.Serial == serial }); i >= 0 {
-			chosen = &printers[i]
-		}
-
 		if k.snapshot == nil {
-			return picked{printer: chosen, problem: "pictures are not available"}
+			return picked{printer: first, problem: "pictures are not available"}
 		}
 
-		data, mt, err := k.snapshot(ctx, s, s.Cameras[serial])
-		if err != nil {
-			return picked{printer: chosen, problem: err.Error()}
+		// Every camera is tried in serial order. The first that answers goes with
+		// the message, and each that did not is named with its printer, so a
+		// camera that is down is not hidden by one that works.
+		var failed []string
+
+		for _, serial := range serials {
+			printer := &testPrinter{Name: serial, Serial: serial}
+
+			if i := slices.IndexFunc(printers, func(p testPrinter) bool { return p.Serial == serial }); i >= 0 {
+				printer = &printers[i]
+			}
+
+			data, mt, err := k.snapshot(ctx, s, s.Cameras[serial])
+			if err != nil {
+				failed = append(failed, fmt.Sprintf("the camera %s of %s: %s", s.Cameras[serial], printerName(printer.Name), err))
+
+				continue
+			}
+
+			return picked{printer: printer, image: data, mediaType: mt, problem: strings.Join(failed, "; ")}
 		}
 
-		return picked{printer: chosen, image: data, mediaType: mt}
+		return picked{printer: first, problem: strings.Join(failed, "; ")}
 	case imageThumbnail:
 		if k.thumbnail == nil || k.lastPrint == nil {
 			return picked{printer: first, problem: "pictures are not available"}

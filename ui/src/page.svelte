@@ -23,6 +23,7 @@
     problems,
     toSettings,
     type Form,
+    type Kind,
   } from './form';
   import { heldHost } from './host';
   import MessageRow from './message-row.svelte';
@@ -183,6 +184,51 @@
     if (!original) return;
     form = structuredClone($state.snapshot(original));
     test = 'idle';
+  };
+
+  // One message type's test, written from its saved rule. The text says what
+  // went out, and why a picture the rule asks for did not.
+  const kindTestBlocked = $derived.by(() => {
+    if (!configured) return t('pushover.kind_test.save_first');
+    if (changed) return t('pushover.kind_test.unsaved');
+
+    return undefined;
+  });
+
+  const sendKindTest = async (
+    kind: Kind,
+  ): Promise<{ ok: boolean; text: string }> => {
+    try {
+      const result = await bind(host.client).sendTest(
+        { body: { kind } },
+        host.signal,
+      );
+      const printer = result.printer;
+      if (result.picture_problem !== '')
+        return {
+          ok: true,
+          text: t('pushover.kind_test.no_picture', {
+            reason: result.picture_problem,
+          }),
+        };
+      if (result.picture !== 'none')
+        return {
+          ok: true,
+          text: t('pushover.kind_test.ok_picture', {
+            printer,
+            picture: t(`pushover.image.sample.${result.picture}`),
+          }),
+        };
+
+      return { ok: true, text: t('pushover.kind_test.ok', { printer }) };
+    } catch (error) {
+      return {
+        ok: false,
+        text: isRefused(error)
+          ? t('pushover.error.test_refused')
+          : messageOf(error),
+      };
+    }
   };
 
   const sendTest = async (): Promise<void> => {
@@ -403,6 +449,8 @@
               {kind}
               bind:rule={form.rules[kind]}
               {tasmota}
+              testBlocked={kindTestBlocked}
+              ontest={sendKindTest}
               titleProblem={found[`title.${kind}`]}
               bodyProblem={found[`body.${kind}`]}
               onchange={noop}

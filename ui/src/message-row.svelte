@@ -29,6 +29,9 @@
     kind: Kind;
     rule: Rule;
     tasmota: boolean;
+    // Why the test cannot be sent now, or undefined when it can.
+    testBlocked?: string | undefined;
+    ontest: (kind: Kind) => Promise<{ ok: boolean; text: string }>;
     titleProblem?: string | undefined;
     bodyProblem?: string | undefined;
     onchange: () => void;
@@ -38,6 +41,8 @@
     kind,
     rule = $bindable(),
     tasmota,
+    testBlocked,
+    ontest,
     titleProblem,
     bodyProblem,
     onchange,
@@ -46,6 +51,18 @@
   const t = heldHost().t;
 
   let open = $state(false);
+  let testing = $state(false);
+  let outcome = $state<{ ok: boolean; text: string } | undefined>();
+
+  const runTest = async (): Promise<void> => {
+    testing = true;
+    outcome = undefined;
+    try {
+      outcome = await ontest(kind);
+    } finally {
+      testing = false;
+    }
+  };
   // Which of the two boxes a tag button writes into: the one used last.
   let lastBox = $state<'title' | 'body'>('body');
 
@@ -132,19 +149,43 @@
     />
     <div class="flex min-w-0 flex-col">
       <span class="text-sm font-medium">{t(`pushover.kind.${kind}`)}</span>
-      <Button
-        variant="link"
-        size="sm"
-        class="h-auto w-fit p-0 text-xs"
-        onclick={() => (open = !open)}
-      >
-        {open ? t('pushover.text.hide') : t('pushover.text.customize')}
-        {#if titleProblem !== undefined || bodyProblem !== undefined}
-          · {t('pushover.text.needs_fix')}
-        {:else if changed && !open}
-          · {t('pushover.text.changed')}
-        {/if}
-      </Button>
+      <div class="flex flex-wrap items-center gap-x-3">
+        <Button
+          variant="link"
+          size="sm"
+          class="h-auto w-fit p-0 text-xs"
+          onclick={() => (open = !open)}
+        >
+          {open ? t('pushover.text.hide') : t('pushover.text.customize')}
+          {#if titleProblem !== undefined || bodyProblem !== undefined}
+            · {t('pushover.text.needs_fix')}
+          {:else if changed && !open}
+            · {t('pushover.text.changed')}
+          {/if}
+        </Button>
+        <Button
+          variant="link"
+          size="sm"
+          class="h-auto w-fit p-0 text-xs"
+          title={testBlocked}
+          disabled={testBlocked !== undefined || testing}
+          onclick={() => void runTest()}
+        >
+          {testing
+            ? t('pushover.kind_test.sending')
+            : t('pushover.kind_test.send')}
+        </Button>
+      </div>
+      {#if outcome}
+        <p
+          class={[
+            'text-xs',
+            outcome.ok ? 'text-muted-foreground' : 'text-destructive-text',
+          ]}
+        >
+          {outcome.text}
+        </p>
+      {/if}
     </div>
   </div>
 

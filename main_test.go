@@ -20,7 +20,7 @@ func call(t *testing.T, send func(context.Context, Message) error, method, path 
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	routes(send).ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	routes(send, testKit{}).ServeHTTP(rec, httptest.NewRequest(method, path, nil))
 
 	return rec
 }
@@ -231,4 +231,46 @@ func TestTheAcceptedPortsAreTheOnesTheManifestAllows(t *testing.T) {
 	}
 
 	t.Fatal("module.yaml declares no egress for connect_url")
+}
+
+func TestAKindTestSendsThatKindsMessageAndSaysWhatItDid(t *testing.T) {
+	use(t, defaults(t))
+
+	var sent []Message
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"kind":"attention"}`))
+	routes(func(_ context.Context, m Message) error { sent = append(sent, m); return nil }, testKit{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || len(sent) != 1 {
+		t.Fatalf("%d %s sent %d", rec.Code, rec.Body, len(sent))
+	}
+
+	if !strings.Contains(sent[0].Title, "needs you") || !strings.Contains(rec.Body.String(), `"picture":"none"`) {
+		t.Fatalf("%+v %s", sent[0], rec.Body)
+	}
+}
+
+func TestAKindTestRefusesAKindItDoesNotKnow(t *testing.T) {
+	use(t, defaults(t))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"kind":"nope"}`))
+	routes(func(context.Context, Message) error { t.Error("sent"); return nil }, testKit{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "UNKNOWN_KIND") {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAKindTestWithABrokenBodyIsRefused(t *testing.T) {
+	use(t, defaults(t))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{`))
+	routes(func(context.Context, Message) error { t.Error("sent"); return nil }, testKit{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
 }

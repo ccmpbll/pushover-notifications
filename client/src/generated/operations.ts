@@ -6,7 +6,7 @@ import type { operations } from "./module-api.js";
 
 /** Every operation the document declares, keyed by its operationId. */
 export const operationTable = {
-  "send-test": { id: "send-test", method: "POST", path: "/api/v1/modules/com.github.aux.ccmpbll.pushover-notifications/test", response: "json", anonymous: false },
+  "send-test": { id: "send-test", method: "POST", path: "/api/v1/modules/com.github.aux.ccmpbll.pushover-notifications/test", body: "application/json", response: "json", anonymous: false },
 } as const satisfies Record<string, Operation>;
 
 /** The routes of module com.github.aux.ccmpbll.pushover-notifications, one method per operation, bound to one transport. */
@@ -17,7 +17,9 @@ export interface Operations {
    * Send a test message
    */
   sendTest(
-    request?: Record<string, never>,
+    request?: {
+      body?: NonNullable<operations["send-test"]["requestBody"]>["content"]["application/json"];
+    },
     signal?: AbortSignal,
   ): Promise<operations["send-test"]["responses"][200]["content"]["application/json"]>;
 }

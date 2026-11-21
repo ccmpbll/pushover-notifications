@@ -42,6 +42,23 @@ var (
 		fault.ShowDetail,
 	))
 
+	// BadRequest is a request body this module cannot read.
+	BadRequest = fault.Register(faultDomain, "BAD_REQUEST", http.StatusBadRequest, fault.Document(
+		"This module cannot read that request",
+		"Send the JSON body openapi.json describes, or none.",
+		fault.RetryNever,
+		fault.ShowDetail,
+	))
+
+	// UnknownKind is a test asked for a message type this module does not have.
+	UnknownKind = fault.Register(faultDomain, "UNKNOWN_KIND", http.StatusBadRequest, fault.Document(
+		"This module has no message of that type",
+		"Use one of started, finished, failed, cancelled, attention or lost.",
+		fault.RetryNever,
+		fault.ShowDetail,
+		"kind",
+	))
+
 	// SendFailed is a message Pushover did not take.
 	SendFailed = fault.Register(faultDomain, "SEND_FAILED", http.StatusBadGateway, fault.Document(
 		"Pushover did not take the message",

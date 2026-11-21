@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Send a test message
-         * @description Sends one message with the current credentials, so a person can tell they work. The host takes operate_resource on the module's instance before this is called. Refused with 409 NOT_CONFIGURED while pushover_token and pushover_user are empty, and with 502 SEND_FAILED, carrying Pushover's reason, when Pushover does not take it.
+         * @description Sends one message so a person can tell the account works, or, with a kind, the message of that type as its saved rule writes it: its title, text, priority, sound and picture, filled in with sample values and marked Test. A type that is switched off is sent too. For a camera picture it uses the first printer (by serial) with a camera chosen, and for a thumbnail the first printer with a print file on record. A picture that could not be got is reported in picture_problem and the text is sent without it. The host takes operate_resource on the module's instance before this is called. Refused with 409 NOT_CONFIGURED while pushover_token and pushover_user are empty, with 400 UNKNOWN_KIND for a type this module does not have, and with 502 SEND_FAILED, carrying Pushover's reason, when Pushover does not take it.
          */
         post: operations["send-test"];
         delete?: never;
@@ -43,7 +43,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description The message type to test. Left out, the plain account test is sent.
+                     * @enum {string}
+                     */
+                    kind?: "started" | "finished" | "failed" | "cancelled" | "attention" | "lost";
+                };
+            };
+        };
         responses: {
             /** @description Pushover took the message. */
             200: {
@@ -53,6 +63,15 @@ export interface operations {
                 content: {
                     "application/json": {
                         sent: boolean;
+                        /** @description The printer the sample was written for. Empty for the plain test. */
+                        printer: string;
+                        /**
+                         * @description The picture that went with the message.
+                         * @enum {string}
+                         */
+                        picture: "none" | "thumbnail" | "camera";
+                        /** @description Why a picture the rule asks for did not go with the message. Empty when none was asked for or it went. */
+                        picture_problem: string;
                     };
                 };
             };

@@ -189,7 +189,7 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 
 		for _, serial := range serials {
 			if ctx.Err() != nil {
-				failed = append(failed, "the pictures ran out of time before every camera was tried")
+				failed = append(failed, "picture timed out before every camera was tried")
 
 				break
 			}
@@ -223,7 +223,7 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 
 		for i := range printers {
 			if ctx.Err() != nil {
-				return picked{printer: first, problem: "the pictures ran out of time before a print file was found"}
+				return picked{printer: first, problem: "picture timed out before a print file was found"}
 			}
 
 			last, ok := k.lastPrint(ctx, printers[i].ID)

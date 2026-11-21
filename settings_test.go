@@ -251,21 +251,22 @@ func TestPicturesNeedTheConnectAddressAndToken(t *testing.T) {
 
 func TestCameraAndConnectSettingsThatAreRefused(t *testing.T) {
 	cases := map[string]string{
-		"cameras that are not JSON":        `{"cameras":"SER-A=bench-top"}`,
-		"cameras that are a list":          `{"cameras":"[\"SER-A\"]"}`,
-		"a camera that is not a name":      `{"cameras":"{\"SER-A\":5}"}`,
-		"a printer with an empty camera":   `{"cameras":"{\"SER-A\":\"\"}"}`,
-		"a camera for an empty serial":     `{"cameras":"{\"\":\"bench-top\"}"}`,
-		"a slash in a camera name":         `{"cameras":"{\"A\":\"a/b\"}"}`,
-		"a camera name that is long":       `{"cameras":"{\"A\":\"` + strings.Repeat("a", 65) + `\"}"}`,
-		"the old numbered camera settings": `{"camera1_printer":"A","camera1_name":"x"}`,
-		"a scheme that is not http":        `{"connect_url":"ftp://127.0.0.1"}`,
-		"no host":                          `{"connect_url":"http:///x"}`,
-		"a password in the address":        `{"connect_url":"http://user:hunter2@127.0.0.1:8080"}`,
-		"a query in the address":           `{"connect_url":"http://127.0.0.1:8080/?a=b"}`,
-		"a space in the address":           `{"connect_url":"http://127.0.0.1 :8080"}`,
-		"a token with a space":             `{"connect_token":"a b"}`,
-		"a token that is far too long":     `{"connect_token":"` + strings.Repeat("a", 513) + `"}`,
+		"cameras that are not JSON":         `{"cameras":"SER-A=bench-top"}`,
+		"cameras that are a list":           `{"cameras":"[\"SER-A\"]"}`,
+		"a camera that is not a name":       `{"cameras":"{\"SER-A\":5}"}`,
+		"a printer with an empty camera":    `{"cameras":"{\"SER-A\":\"\"}"}`,
+		"a camera for an empty serial":      `{"cameras":"{\"\":\"bench-top\"}"}`,
+		"a printer named twice with spaces": `{"cameras":"{\" A \":\"x\",\"A\":\"y\"}"}`,
+		"a slash in a camera name":          `{"cameras":"{\"A\":\"a/b\"}"}`,
+		"a camera name that is long":        `{"cameras":"{\"A\":\"` + strings.Repeat("a", 65) + `\"}"}`,
+		"the old numbered camera settings":  `{"camera1_printer":"A","camera1_name":"x"}`,
+		"a scheme that is not http":         `{"connect_url":"ftp://127.0.0.1"}`,
+		"no host":                           `{"connect_url":"http:///x"}`,
+		"a password in the address":         `{"connect_url":"http://user:hunter2@127.0.0.1:8080"}`,
+		"a query in the address":            `{"connect_url":"http://127.0.0.1:8080/?a=b"}`,
+		"a space in the address":            `{"connect_url":"http://127.0.0.1 :8080"}`,
+		"a token with a space":              `{"connect_token":"a b"}`,
+		"a token that is far too long":      `{"connect_token":"` + strings.Repeat("a", 513) + `"}`,
 	}
 
 	for name, raw := range cases {

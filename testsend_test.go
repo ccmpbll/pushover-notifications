@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -406,5 +407,110 @@ func TestACameraForAPrinterTheHostDoesNotListIsTriedLastAndDoesNotBreakTheTest(t
 	// printer's camera comes first and answers.
 	if string(m.Image) != "snap:cam-two" || report.Printer != "Core One" {
 		t.Fatalf("%+v", report)
+	}
+}
+
+func TestAnUnlistedPrinterIsNotCalledOffWhenTheListIsMissing(t *testing.T) {
+	s := withRule(t, "started", func(r *Rule) { r.Image = imageCamera })
+	s.Cameras = map[string]string{"S1": "cam-one"}
+
+	kit := testKit{
+		printers: func(context.Context) ([]testPrinter, error) { return nil, errors.New("no list") },
+		snapshot: func(context.Context, Settings, string) ([]byte, string, error) { return nil, "", errors.New("502") },
+	}
+
+	_, report := kit.compose(context.Background(), s, "started", testNow)
+
+	if strings.Contains(report.Problem, "off") || !strings.Contains(report.Problem, "cam-one") {
+		t.Fatalf("%q", report.Problem)
+	}
+}
+
+func TestTheCamerasStopWhenThePictureBudgetIsSpentAndTheSendStillHasItsOwnTime(t *testing.T) {
+	s := withRule(t, "started", func(r *Rule) { r.Image = imageCamera })
+	s.Cameras = map[string]string{}
+
+	for i := range 6 {
+		s.Cameras[fmt.Sprintf("S%d", i)] = fmt.Sprintf("cam-%d", i)
+	}
+
+	asked := 0
+	kit := testKit{
+		budget: 50 * time.Millisecond,
+		snapshot: func(ctx context.Context, _ Settings, _ string) ([]byte, string, error) {
+			asked++
+			<-ctx.Done()
+
+			return nil, "", ctx.Err()
+		},
+	}
+
+	started := time.Now()
+	_, report := kit.compose(context.Background(), s, "started", testNow)
+
+	// The first camera waits out the budget, and the rest are not tried.
+	if asked != 1 || time.Since(started) > 2*time.Second {
+		t.Fatalf("asked %d in %v", asked, time.Since(started))
+	}
+
+	if !strings.Contains(report.Problem, "ran out of time") {
+		t.Fatalf("%q", report.Problem)
+	}
+}
+
+func TestCollectPrintersReadsEveryPage(t *testing.T) {
+	all := make([]testPrinter, 450)
+	for i := range all {
+		all[i] = testPrinter{ID: fmt.Sprintf("d%d", i)}
+	}
+
+	pages := 0
+	got, err := collectPrinters(context.Background(), func(_ context.Context, offset, limit int) ([]testPrinter, int, error) {
+		pages++
+
+		return all[offset:min(offset+limit, len(all))], len(all), nil
+	})
+
+	if err != nil || len(got) != 450 || pages != 3 {
+		t.Fatalf("%d printers in %d pages: %v", len(got), pages, err)
+	}
+
+	// A host that never stops answering is not followed for ever.
+	_, _ = collectPrinters(context.Background(), func(context.Context, int, int) ([]testPrinter, int, error) {
+		pages++
+
+		return []testPrinter{{ID: "x"}}, 1 << 30, nil
+	})
+
+	if pages > 3+collectPages {
+		t.Fatalf("%d pages", pages)
+	}
+
+	// A page that fails after the first keeps what was read.
+	calls := 0
+	got, err = collectPrinters(context.Background(), func(context.Context, int, int) ([]testPrinter, int, error) {
+		calls++
+		if calls == 2 {
+			return nil, 0, errors.New("late")
+		}
+
+		return []testPrinter{{ID: "a"}, {ID: "b"}}, 10, nil
+	})
+
+	if err == nil || len(got) != 2 {
+		t.Fatalf("%v %v", got, err)
+	}
+}
+
+func TestCollectPrintersStopsAtAnEmptyPageWhateverTheTotalSays(t *testing.T) {
+	calls := 0
+	got, err := collectPrinters(context.Background(), func(context.Context, int, int) ([]testPrinter, int, error) {
+		calls++
+
+		return nil, 10, nil
+	})
+
+	if err != nil || len(got) != 0 || calls != 1 {
+		t.Fatalf("%d calls: %v %v", calls, got, err)
 	}
 }

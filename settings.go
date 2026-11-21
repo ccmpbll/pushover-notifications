@@ -209,6 +209,12 @@ func (s *Settings) readCameras(value string) error {
 	for serial, name := range raw {
 		serial, name = strings.TrimSpace(serial), strings.TrimSpace(name)
 
+		// Two entries that differ only by spaces are one printer given two
+		// cameras, and the map's order would pick one at random.
+		if _, again := s.Cameras[serial]; again {
+			return errors.New("cameras names a printer twice")
+		}
+
 		if serial == "" || name == "" {
 			return errors.New("cameras needs a printer serial and a camera name for every camera")
 		}

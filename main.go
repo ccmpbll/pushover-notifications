@@ -132,17 +132,19 @@ func run() error {
 	// last had, and the two kinds of picture.
 	kit := testKit{
 		printers: func(ctx context.Context) ([]testPrinter, error) {
-			page, err := devices.List(ctx, deviceapi.ListParams{Limit: 50})
-			if err != nil {
-				return nil, err
-			}
+			return collectPrinters(ctx, func(ctx context.Context, offset, limit int) ([]testPrinter, int, error) {
+				page, err := devices.List(ctx, deviceapi.ListParams{Limit: limit, Offset: offset})
+				if err != nil {
+					return nil, 0, err
+				}
 
-			out := make([]testPrinter, 0, len(page.Items))
-			for _, d := range page.Items {
-				out = append(out, testPrinter{ID: d.ID, Name: d.Name, Serial: d.Serial, Away: !d.Connected})
-			}
+				out := make([]testPrinter, 0, len(page.Items))
+				for _, d := range page.Items {
+					out = append(out, testPrinter{ID: d.ID, Name: d.Name, Serial: d.Serial, Away: !d.Connected})
+				}
 
-			return out, nil
+				return out, page.Total, nil
+			})
 		},
 		lastPrint: func(ctx context.Context, id string) (testPrint, bool) {
 			jobs, err := devices.Jobs(ctx, deviceapi.JobsParams{ID: id})
@@ -291,14 +293,17 @@ func routes(send func(context.Context, Message) error, kit testKit) http.Handler
 			}
 		}
 
-		// A picture is fetched, and the fetch has its own time limit, so the
-		// whole test is given longer than the plain one.
-		ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
-		defer cancel()
-
+		// The pictures have their own budget, and the send its own time after
+		// them, so a camera that is down cannot leave the send with none.
 		if ask.Kind != "" {
-			message, report = kit.compose(ctx, s, ask.Kind, time.Now())
+			composing, stop := context.WithTimeout(r.Context(), 30*time.Second)
+			message, report = kit.compose(composing, s, ask.Kind, time.Now())
+
+			stop()
 		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
 
 		if err := send(ctx, message); err != nil {
 			reason := "the message could not be sent"

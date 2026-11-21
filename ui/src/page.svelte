@@ -13,6 +13,7 @@
   import { bind } from 'pushover-notifications-client';
 
   import { hideApplying, showApplying } from './applying';
+  import { isRefused } from './refused';
   import Choice from './choice.svelte';
   import {
     KINDS,
@@ -54,6 +55,8 @@
   let cameras = $state<Camera[]>([]);
   let test = $state<'idle' | 'busy' | 'ok' | 'bad'>('idle');
   let testReason = $state('');
+  // Connect refused a save because of the signed-in person's role.
+  let readOnly = $state(false);
 
   const messageOf = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
@@ -190,7 +193,9 @@
     } catch (error) {
       if (host.signal.aborted) return;
       test = 'bad';
-      testReason = messageOf(error);
+      testReason = isRefused(error)
+        ? t('pushover.error.test_refused')
+        : messageOf(error);
     }
   };
 
@@ -227,7 +232,10 @@
         once: true,
       });
     } catch (error) {
-      if (!host.signal.aborted)
+      if (isRefused(error)) {
+        readOnly = true;
+        failure = t('pushover.error.save_refused');
+      } else if (!host.signal.aborted)
         failure = t('pushover.error.save', { reason: messageOf(error) });
     } finally {
       saving = false;
@@ -549,7 +557,7 @@
         <Button
           size="sm"
           pending={saving}
-          disabled={saving || !changed || !valid}
+          disabled={saving || !changed || !valid || readOnly}
           onclick={() => void save()}
         >
           {t('pushover.save.save')}

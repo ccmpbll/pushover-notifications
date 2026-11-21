@@ -6,6 +6,8 @@
   "pushover.error.not_found": "This extension is not installed as a server resource.",
   "pushover.error.load": "Could not read the settings: {reason}",
   "pushover.error.save": "Could not save: {reason}",
+  "pushover.error.save_refused": "Your account can read these settings but not change them. Saving needs the administrator role. Ask an administrator.",
+  "pushover.error.test_refused": "Your account cannot send a test message. That needs the operator role or higher.",
   "pushover.status.not_set_up": "Not set up yet. Nothing is sent until you add your Pushover token and user key.",
   "pushover.account.title": "Pushover account",
   "pushover.account.description": "Get an application token at pushover.net/apps and your user key from the top of your Pushover dashboard.",

@@ -453,7 +453,7 @@ func TestTheCamerasStopWhenThePictureBudgetIsSpentAndTheSendStillHasItsOwnTime(t
 		t.Fatalf("asked %d in %v", asked, time.Since(started))
 	}
 
-	if !strings.Contains(report.Problem, "ran out of time") {
+	if !strings.Contains(report.Problem, "timed out") {
 		t.Fatalf("%q", report.Problem)
 	}
 }
@@ -577,7 +577,7 @@ func TestAThumbnailTestStopsWhenThePictureBudgetIsSpent(t *testing.T) {
 
 	// The first read waits out the budget, the rest are not made, and the
 	// reason is the time and not a missing print file.
-	if reads > 2 || !strings.Contains(report.Problem, "ran out of time") || strings.Contains(report.Problem, "no printer has a print file") {
+	if reads > 2 || !strings.Contains(report.Problem, "timed out") || strings.Contains(report.Problem, "no printer has a print file") {
 		t.Fatalf("%d reads: %q", reads, report.Problem)
 	}
 }

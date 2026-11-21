@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prusa3d/prusa-connect/sdk/manifest"
 	"gopkg.in/yaml.v3"
@@ -302,5 +303,32 @@ func TestTheTestRouteTakesTheKindsTheModuleHas(t *testing.T) {
 	got := api.Paths["/test"]["post"].RequestBody.Content["application/json"].Schema.Properties.Kind.Enum
 	if !slices.Equal(got, kinds) {
 		t.Fatalf("openapi.json lets /test take %v, the module has %v", got, kinds)
+	}
+}
+
+func TestAPictureThatTakesTheWholeBudgetDoesNotStarveTheSend(t *testing.T) {
+	use(t, withRule(t, "started", func(r *Rule) { r.Image = imageCamera }))
+
+	s := settings()
+	s.Cameras = map[string]string{"S1": "cam-one"}
+	use(t, s)
+
+	kit := testKit{
+		budget: 50 * time.Millisecond,
+		snapshot: func(ctx context.Context, _ Settings, _ string) ([]byte, string, error) {
+			<-ctx.Done()
+
+			return nil, "", ctx.Err()
+		},
+	}
+
+	var sendErr error
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"kind":"started"}`))
+	routes(func(ctx context.Context, _ Message) error { sendErr = ctx.Err(); return sendErr }, kit).ServeHTTP(rec, req)
+
+	if sendErr != nil || rec.Code != http.StatusOK {
+		t.Fatalf("the send had an expired context (%v): %d %s", sendErr, rec.Code, rec.Body)
 	}
 }

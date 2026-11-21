@@ -59,6 +59,8 @@
   let testReason = $state('');
   // Connect refused a save because of the signed-in person's role.
   let readOnly = $state(false);
+  // Connect refused a test message because of the signed-in person's role.
+  let testRefused = $state(false);
 
   const messageOf = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
@@ -190,6 +192,7 @@
   // One message type's test, written from its saved rule. The text says what
   // went out, and why a picture the rule asks for did not.
   const kindTestBlocked = $derived.by(() => {
+    if (testRefused) return t('pushover.error.test_refused');
     if (!configured) return t('pushover.kind_test.save_first');
     if (changed) return t('pushover.kind_test.unsaved');
 
@@ -237,6 +240,8 @@
           };
       }
     } catch (error) {
+      if (isRefused(error)) testRefused = true;
+
       return {
         ok: false,
         text: isRefused(error)
@@ -254,6 +259,7 @@
     } catch (error) {
       if (host.signal.aborted) return;
       test = 'bad';
+      if (isRefused(error)) testRefused = true;
       testReason = isRefused(error)
         ? t('pushover.error.test_refused')
         : messageOf(error);
@@ -388,7 +394,10 @@
             variant="secondary"
             size="sm"
             pending={test === 'busy'}
-            disabled={!configured || unsavedCredentials || test === 'busy'}
+            disabled={!configured ||
+              unsavedCredentials ||
+              testRefused ||
+              test === 'busy'}
             onclick={() => void sendTest()}
           >
             {t('pushover.test.send')}
@@ -465,6 +474,7 @@
               bind:rule={form.rules[kind]}
               {tasmota}
               testBlocked={kindTestBlocked}
+              unsaved={changed}
               ontest={sendKindTest}
               titleProblem={found[`title.${kind}`]}
               bodyProblem={found[`body.${kind}`]}

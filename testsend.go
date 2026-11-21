@@ -36,6 +36,10 @@ type testPrint struct {
 // printer's last print, and the two kinds of picture. Any of them may be nil,
 // and the test then goes without it.
 type testKit struct {
+	// budget is how long the pictures of one test may take in all. Zero is
+	// pictureBudget. It is for the fetching only: the send has its own time.
+	budget time.Duration
+
 	printers  func(ctx context.Context) ([]testPrinter, error)
 	lastPrint func(ctx context.Context, id string) (testPrint, bool)
 	thumbnail func(ctx context.Context, s Settings, deviceID, filePath string) ([]byte, string, error)
@@ -51,6 +55,15 @@ type testReport struct {
 	// Problem is why a picture the rule asks for did not go with it.
 	Problem string `json:"picture_problem,omitempty"`
 }
+
+// pictureBudget is the time a test spends getting pictures, however many
+// cameras it tries. Past it the rest are not tried, so a fleet of cameras that
+// are all down cannot use up the time the message itself needs.
+const pictureBudget = 20 * time.Second
+
+// collectPages is the most pages of printers a test reads, so a host that never
+// stops answering is not followed for ever.
+const collectPages = 20
 
 // sampleFile is the file name a test uses when no printer has a print on record.
 const (
@@ -71,7 +84,15 @@ func (k testKit) compose(ctx context.Context, s Settings, kind string, now time.
 		printers, _ = k.printers(ctx)
 	}
 
-	got := k.pick(ctx, s, rule.Image, printers)
+	budget := k.budget
+	if budget <= 0 {
+		budget = pictureBudget
+	}
+
+	pictures, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+
+	got := k.pick(pictures, s, rule.Image, printers)
 
 	name, file := samplePrinter, sampleFile
 	if got.printer != nil {
@@ -131,8 +152,13 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 
 		// The cameras of printers that are on come first: a printer that is off
 		// has a camera that is off, and trying it first only costs the wait.
+		// A printer the host did not list is unknown, not off: it goes last, and
+		// is not said to be off.
+		listed := func(serial string) int {
+			return slices.IndexFunc(printers, func(p testPrinter) bool { return p.Serial == serial })
+		}
 		away := func(serial string) bool {
-			i := slices.IndexFunc(printers, func(p testPrinter) bool { return p.Serial == serial })
+			i := listed(serial)
 
 			return i < 0 || printers[i].Away
 		}
@@ -153,16 +179,22 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 		var failed []string
 
 		for _, serial := range serials {
+			if ctx.Err() != nil {
+				failed = append(failed, "the pictures ran out of time before every camera was tried")
+
+				break
+			}
+
 			printer := &testPrinter{Name: serial, Serial: serial}
 
-			if i := slices.IndexFunc(printers, func(p testPrinter) bool { return p.Serial == serial }); i >= 0 {
+			if i := listed(serial); i >= 0 {
 				printer = &printers[i]
 			}
 
 			data, mt, err := k.snapshot(ctx, s, s.Cameras[serial])
 			if err != nil {
 				note := ""
-				if away(serial) {
+				if i := listed(serial); i >= 0 && printers[i].Away {
 					note = " (the printer is off)"
 				}
 
@@ -219,6 +251,30 @@ func lastPrintOf(jobs deviceapi.Jobs) (testPrint, bool) {
 	}
 
 	return testPrint{}, false
+}
+
+// collectPrinters reads every page of the printers the host knows. list reads
+// one page from offset, at most limit long, and says how many printers there
+// are in all. A page that fails keeps what was read before it.
+func collectPrinters(ctx context.Context, list func(ctx context.Context, offset, limit int) (items []testPrinter, total int, err error)) ([]testPrinter, error) {
+	const limit = deviceapi.MaxPageLimit
+
+	var all []testPrinter
+
+	for range collectPages {
+		items, total, err := list(ctx, len(all), limit)
+		if err != nil {
+			return all, err
+		}
+
+		all = append(all, items...)
+
+		if len(items) == 0 || len(all) >= total {
+			break
+		}
+	}
+
+	return all, nil
 }
 
 // sampleValues is a value for every tag a message type may use except the

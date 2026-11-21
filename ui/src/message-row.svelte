@@ -31,6 +31,8 @@
     tasmota: boolean;
     // Why the test cannot be sent now, or undefined when it can.
     testBlocked?: string | undefined;
+    // The page has changes that are not saved.
+    unsaved?: boolean;
     ontest: (kind: Kind) => Promise<{ ok: boolean; text: string }>;
     titleProblem?: string | undefined;
     bodyProblem?: string | undefined;
@@ -42,6 +44,7 @@
     rule = $bindable(),
     tasmota,
     testBlocked,
+    unsaved = false,
     ontest,
     titleProblem,
     bodyProblem,
@@ -53,6 +56,12 @@
   let open = $state(false);
   let testing = $state(false);
   let outcome = $state<{ ok: boolean; text: string } | undefined>();
+
+  // The result describes the rule as it was saved. Once the page has changes
+  // the line no longer does, so it goes.
+  $effect(() => {
+    if (unsaved) outcome = undefined;
+  });
 
   const runTest = async (): Promise<void> => {
     testing = true;

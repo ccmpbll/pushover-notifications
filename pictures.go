@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -70,7 +71,7 @@ func (c *connectAPI) get(ctx context.Context, s Settings, route, scope string) (
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", refusal(resp.StatusCode, scope)
+		return nil, "", refusal(resp.StatusCode, scope, why(resp.Body, s.ConnectToken))
 	}
 
 	mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
@@ -93,7 +94,11 @@ func (c *connectAPI) get(ctx context.Context, s Settings, route, scope string) (
 // refusal says what an answer other than 200 means for the person who has to
 // fix it. Only the status and the scope the picture needs are in it, never the
 // token.
-func refusal(status int, scope string) error {
+func refusal(status int, scope, detail string) error {
+	if detail != "" && status != http.StatusUnauthorized && status != http.StatusForbidden {
+		return fmt.Errorf("Prusa Connect answered HTTP %d, so there is no picture: %s", status, detail)
+	}
+
 	switch status {
 	case http.StatusUnauthorized:
 		return errors.New("Prusa Connect does not accept the API token (HTTP 401). It may have expired or been deleted: make a new one under Settings, API credentials")
@@ -104,4 +109,25 @@ func refusal(status int, scope string) error {
 	default:
 		return fmt.Errorf("Prusa Connect answered HTTP %d, so there is no picture", status)
 	}
+}
+
+// why is what Connect says about a refusal: the detail of its problem document,
+// or its title, cut short. It is for a person to read, so a body that is not
+// that is no detail. The token is taken out in case a message ever holds it.
+func why(body io.Reader, token string) string {
+	var problem struct {
+		Title  string `json:"title"`
+		Detail string `json:"detail"`
+	}
+
+	if json.NewDecoder(io.LimitReader(body, 4<<10)).Decode(&problem) != nil {
+		return ""
+	}
+
+	text := problem.Detail
+	if text == "" {
+		text = problem.Title
+	}
+
+	return clip(scrub(strings.Join(strings.Fields(text), " "), token), 200)
 }

@@ -21,6 +21,9 @@ type testPrinter struct {
 	ID     string
 	Name   string
 	Serial string
+	// Away is a printer the host has seen and that is off or out of reach, so
+	// its camera, which the printer powers, is not expected to answer.
+	Away bool
 }
 
 // testPrint is the print a printer last had, from the host's record.
@@ -126,6 +129,16 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 
 		sort.Strings(serials)
 
+		// The cameras of printers that are on come first: a printer that is off
+		// has a camera that is off, and trying it first only costs the wait.
+		away := func(serial string) bool {
+			i := slices.IndexFunc(printers, func(p testPrinter) bool { return p.Serial == serial })
+
+			return i < 0 || printers[i].Away
+		}
+
+		sort.SliceStable(serials, func(a, b int) bool { return !away(serials[a]) && away(serials[b]) })
+
 		if len(serials) == 0 {
 			return picked{printer: first, problem: "no printer has a camera chosen, in the Printers section"}
 		}
@@ -148,7 +161,12 @@ func (k testKit) pick(ctx context.Context, s Settings, mode string, printers []t
 
 			data, mt, err := k.snapshot(ctx, s, s.Cameras[serial])
 			if err != nil {
-				failed = append(failed, fmt.Sprintf("the camera %s of %s: %s", s.Cameras[serial], printerName(printer.Name), err))
+				note := ""
+				if away(serial) {
+					note = " (the printer is off)"
+				}
+
+				failed = append(failed, fmt.Sprintf("the camera %s of %s%s: %s", s.Cameras[serial], printerName(printer.Name), note, err))
 
 				continue
 			}

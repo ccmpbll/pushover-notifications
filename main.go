@@ -139,7 +139,7 @@ func run() error {
 
 			out := make([]testPrinter, 0, len(page.Items))
 			for _, d := range page.Items {
-				out = append(out, testPrinter{ID: d.ID, Name: d.Name, Serial: d.Serial})
+				out = append(out, testPrinter{ID: d.ID, Name: d.Name, Serial: d.Serial, Away: !d.Connected})
 			}
 
 			return out, nil

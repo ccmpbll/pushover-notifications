@@ -18,7 +18,7 @@ Sends a [Pushover](https://pushover.net) notification when a print starts, finis
 
 Open the Pushover Notifications page and add your application token (from pushover.net/apps) and user key. **Send a test message** checks them, and each message type has its own **Send test**, written from its saved rule with sample values (a camera test uses the first printer that is on and has a camera, a thumbnail test the first printer with a print file). A viewer can read the page, an operator can also send tests, and saving needs an administrator. Saving restarts the extension for a few seconds. Times in a message are written in the time zone on the page, which starts as your browser's.
 
-For pictures, give it the address of your Prusa Connect server (on port 80, 443, 8080 or 8443) and an API token (Settings, API credentials, New credential). Camera pictures need the scope `read`. Thumbnails need `operate`, because Connect asks the printer for the picture, and a token with `operate` can also control your printers, so use a camera picture if you would rather keep the token read-only. Without a token, messages go without pictures.
+For pictures, give it the address of your Prusa Connect server (on port 80, 443, 8080 or 8443) and an API token (Settings, API credentials, New credential). Camera pictures need the scope `read`. Thumbnails need `operate`, because Connect asks the printer for the picture, and a token with `operate` can also control your printers, so use a camera picture if you would rather keep the token read-only. Create a token just for this extension, so you can revoke it on its own. Without a token, messages go without pictures.
 
 ## Permissions
 
